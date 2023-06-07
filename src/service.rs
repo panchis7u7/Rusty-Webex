@@ -86,9 +86,25 @@ pub mod Service {
         }
     }
 
+    // Review the status for the response.
+    // ----------------------------------------------------------------------------
+    pub fn review_status(response: &reqwest::Response) -> () {
+        match response.status() {
+            reqwest::StatusCode::OK => {
+                log::debug!("Succesful request: {:?}", response)
+            }
+            reqwest::StatusCode::NOT_FOUND => {
+                log::debug!("Got 404! Haven't found resource!: {:?}", response)
+            }
+            _ => {
+                log::error!("Got 404! Haven't found resource!: {:?}", response)
+            }
+        }
+    }
+
     // Webex client specific functionality.
     // ----------------------------------------------------------------------------
-    pub async fn send_message(token: &str, message_out: &types::MessageOut) -> reqwest::Response {
+    pub async fn send_message(token: &str, message_out: &types::MessageOut) -> Message {
         let client_service = Service::get_instance();
         let response = client_service
             .client
@@ -100,8 +116,43 @@ pub mod Service {
             .await
             .unwrap();
 
-        println!("\nService level Response: {:?}", response);
+        review_status(&response);
 
-        return response;
+        let message = response
+            .json::<Message>()
+            .await
+            .expect("failed to convert struct from json");
+
+        return message;
     }
+
+    // Retrieve detailed information from a specific message..
+    // ----------------------------------------------------------------------------
+    pub async fn get_message_details(token: &str, message_id: &String) -> Message {
+        let client_service = Service::get_instance();
+        let response = client_service
+            .client
+            .get(format!(
+                "{}{}/{}",
+                WEBEX_URI,
+                Message::API_ENDPOINT,
+                message_id
+            ))
+            .headers(client_service.headers.clone())
+            .bearer_auth(token)
+            .send()
+            .await
+            .unwrap();
+
+        review_status(&response);
+
+        let message = response
+            .json::<Message>()
+            .await
+            .expect("failed to convert struct from json");
+
+        return message;
+    }
+
+    //pub async fn send_card_message() -> reqwest::Response {}
 }

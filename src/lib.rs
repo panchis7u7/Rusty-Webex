@@ -1,4 +1,3 @@
-use reqwest::{Error, Response};
 use service::Service;
 use types::{Message, MessageOut};
 
@@ -18,8 +17,12 @@ impl WebexClient {
         }
     }
 
-    pub async fn send_message(self, message: &MessageOut) -> Response {
+    pub async fn send_message(self, message: &MessageOut) -> Message {
         Service::send_message(&self.bearer_token, message).await
+    }
+
+    pub async fn get_message_details(self, message_id: &String) -> Message {
+        Service::get_message_details(&self.bearer_token, message_id).await
     }
 }
 
