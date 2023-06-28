@@ -6,15 +6,15 @@ Rusty Webex is a Rust crate that provides a simple and intuitive software develo
 ## Features
 Easy Webex API Integration: Rusty Webex abstracts away the complexities of the Webex API, allowing you to focus on building your application logic without getting bogged down in API intricacies.
 
-Authentication Made Simple: Authenticate your application with the Webex platform using various authentication methods supported by Webex, including OAuth2.0, API Key, or Personal Access Token. Rusty Webex handles the authentication process seamlessly, ensuring a secure and streamlined experience.
++ **Authentication Made Simple:** Authenticate your application with the Webex platform using various authentication methods supported by Webex, including OAuth2.0, API Key, or Personal Access Token. Rusty Webex handles the authentication process seamlessly, ensuring a secure and streamlined experience.
 
-Comprehensive API Coverage: Rusty Webex provides comprehensive coverage of the Webex API, allowing you to interact with various Webex resources, including rooms, messages, people, meetings, and more. You can effortlessly create, read, update, and delete resources as needed.
++ **Comprehensive API Coverage:** Rusty Webex provides comprehensive coverage of the Webex API, allowing you to interact with various Webex resources, including rooms, messages, people, meetings, and more. You can effortlessly create, read, update, and delete resources as needed.
 
-Webhook Support: Set up and manage Webex webhooks to receive real-time notifications for events of interest, such as new messages, meeting updates, or membership changes. Rusty Webex simplifies the process of creating and managing webhooks, making it easy to build reactive and event-driven applications.
++ **Webhook Support:** Set up and manage Webex webhooks to receive real-time notifications for events of interest, such as new messages, meeting updates, or membership changes. Rusty Webex simplifies the process of creating and managing webhooks, making it easy to build reactive and event-driven applications.
 
-Flexible Error Handling: Rusty Webex provides robust error handling mechanisms, enabling you to gracefully handle API errors and failures. It offers detailed error messages and convenient error types to aid in debugging and troubleshooting.
++ **Flexible Error Handling:** Rusty Webex provides robust error handling mechanisms, enabling you to gracefully handle API errors and failures. It offers detailed error messages and convenient error types to aid in debugging and troubleshooting.
 
-Asynchronous Operations: Built with asynchronous programming in mind, Rusty Webex utilizes Rust's powerful async/await syntax and integrates seamlessly with popular asynchronous runtimes. This allows you to perform non-blocking API calls and efficiently handle concurrent operations.
++ **Asynchronous Operations:** Built with asynchronous programming in mind, Rusty Webex utilizes Rust's powerful async/await syntax and integrates seamlessly with popular asynchronous runtimes. This allows you to perform non-blocking API calls and efficiently handle concurrent operations.
 
 ## Getting Started
 To start using Rusty Webex in your project, add the following line to your Cargo.toml file:
@@ -38,7 +38,7 @@ let client = WebexClient::new(AUTH_TOKEN);
 Getting details of a particular message:
 
 ```rust
-let detailed_message_info = client.get_message_details(&data.data.id).await;
+let detailed_message_info = client.get_message_details(message_id).await;
 ```
 
 Reply to a message:
@@ -54,7 +54,7 @@ let event_response_message = client.send_message(&event_response_message).await;
 You can generate you own personalized adaptive with proper rust type system:
 
 ```rust
-pub fn case_routing_form(user: &String, message: &String) -> Attachment {
+pub fn message_card(user: &String, message: &String) -> Attachment {
         Attachment {
             content_type: "application/vnd.microsoft.card.adaptive".to_string(),
             content: AdaptiveCard::new().add_body(
@@ -64,6 +64,8 @@ pub fn case_routing_form(user: &String, message: &String) -> Attachment {
             ),
         }
     }
+
+event_response_message.attachments = Some(vec![templates::templates::message_card("Sebastian", "Hello from Rust, Webex!")])
 ```
 
 ## Contributing
