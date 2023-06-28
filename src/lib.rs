@@ -11,17 +11,17 @@ pub struct WebexClient {
 
 impl WebexClient {
     // Constructs a new Webex Teams context from a token.
-    pub fn new(token: &str) -> Self {
-        Self {
+    pub fn new(token: &str) -> WebexClient {
+        WebexClient {
             bearer_token: token.to_string(),
         }
     }
 
-    pub async fn send_message(self, message: &MessageOut) -> Message {
+    pub async fn send_message(&self, message: &MessageOut) -> Message {
         Service::send_message(&self.bearer_token, message).await
     }
 
-    pub async fn get_message_details(self, message_id: &String) -> Message {
+    pub async fn get_message_details(&self, message_id: &String) -> Message {
         Service::get_message_details(&self.bearer_token, message_id).await
     }
 }

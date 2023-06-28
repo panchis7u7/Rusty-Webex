@@ -130,6 +130,21 @@ pub struct MessageOut {
     pub attachments: Option<Vec<Attachment>>, // Content attachments to attach to the message. Only one card per message is supported.
 }
 
+impl From<Message> for MessageOut {
+    fn from(message: Message) -> MessageOut {
+        MessageOut {
+            parent_id: message.parent_id,
+            room_id: message.room_id,
+            to_person_id: message.to_person_id,
+            to_person_email: message.to_person_email,
+            text: message.text,
+            markdown: message.markdown,
+            files: message.files,
+            attachments: message.attachments,
+        }
+    }
+}
+
 // Room type.
 //-----------------------------------------------------------------------------------------------
 #[derive(Deserialize, Serialize, Debug, Clone, Default, PartialEq, Eq)]
@@ -224,7 +239,7 @@ pub enum ActivityType {
 pub enum MessageActivity {
     Posted, // A message was posted.
     Shared, // A message was posted with attachments. TODO: Should this be merged with [`Self::Posted`]? Could have a field to determine
-    // attachments/no attachments, or we can let the user figure that out from the message instance.
+    // xs/no attachments, or we can let the user figure that out from the message instance.
     Acknowledged, // A message was acknowledged.
     Deleted,      // A message was deleted.
 }

@@ -37,7 +37,7 @@ impl AdaptiveCard {
     pub fn new() -> Self {
         Self {
             card_type: "AdaptiveCard".to_string(),
-            version: "1.1".to_string(),
+            version: "1.3".to_string(),
             body: None,
             actions: None,
             select_action: None,
@@ -667,6 +667,22 @@ impl CardElement {
         self.into()
     }
 
+    /// Set Text subtle
+    pub fn set_height(&mut self, h: String) -> Self {
+        if let Self::Image { height, .. } = self {
+            *height = Some(h);
+        }
+        self.into()
+    }
+
+    /// Set Text subtle
+    pub fn set_width(&mut self, w: String) -> Self {
+        if let Self::Image { width, .. } = self {
+            *width = Some(w);
+        }
+        self.into()
+    }
+
     /// Create factSet
     #[must_use]
     pub const fn fact_set() -> Self {
@@ -809,31 +825,31 @@ impl CardElement {
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Column {
     /// The card elements to render inside the Column.
-    items: Vec<CardElement>,
+    pub items: Vec<CardElement>,
     /// An Action that will be invoked when the Column is tapped or selected.
     #[serde(rename = "selectAction", skip_serializing_if = "Option::is_none")]
-    select_action: Option<Action>,
+    pub select_action: Option<Action>,
     /// Style hint for Column.
     #[serde(skip_serializing_if = "Option::is_none")]
-    style: Option<ContainerStyle>,
+    pub style: Option<ContainerStyle>,
     /// Defines how the content should be aligned vertically within the column.
     #[serde(
         rename = "verticalContentAlignment",
         skip_serializing_if = "Option::is_none"
     )]
-    vertical_content_alignment: Option<VerticalContentAlignment>,
+    pub vertical_content_alignment: Option<VerticalContentAlignment>,
     /// When true, draw a separating line between this column and the previous column.
     #[serde(skip_serializing_if = "Option::is_none")]
-    separator: Option<bool>,
+    pub separator: Option<bool>,
     /// Controls the amount of spacing between this column and the preceding column.
     #[serde(skip_serializing_if = "Option::is_none")]
-    spacing: Option<Spacing>,
+    pub spacing: Option<Spacing>,
     /// "auto", "stretch", a number representing relative width of the column in the column group, or in version 1.1 and higher, a specific pixel width, like "50px".
     #[serde(skip_serializing_if = "Option::is_none")]
-    width: Option<String>,
+    pub width: Option<String>,
     /// A unique identifier associated with the item.
     #[serde(skip_serializing_if = "Option::is_none")]
-    id: Option<String>,
+    pub id: Option<String>,
 }
 
 impl From<&Self> for Column {
@@ -887,6 +903,11 @@ impl Column {
     /// Sets width
     pub fn set_width<T: Into<String>>(&mut self, s: T) -> Self {
         self.width = Some(s.into());
+        self.into()
+    }
+
+    pub fn set_spacing(&mut self, s: Spacing) -> Self {
+        self.spacing = Some(s);
         self.into()
     }
 }
@@ -1075,10 +1096,21 @@ pub enum Action {
 // Controls the style of the cards.
 //-----------------------------------------------------------------------------------------------
 #[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(rename_all = "lowercase")]
 pub enum ActionStyle {
     Default,     // Action is displayed as normal
     Positive, // Action is displayed with a positive style (typically the button becomes accent color)
     Destructive, // Action is displayed with a destructive style (typically the button becomes red)
+}
+
+impl ActionStyle {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ActionStyle::Default => "Default",
+            ActionStyle::Positive => "Positive",
+            ActionStyle::Destructive => "Destructive",
+        }
+    }
 }
 
 // Choice to use within a choice-set.
