@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use log::error;
-use parser::Parser;
+use parser::{Callback, Parser};
 use rocket::serde::json::Json;
 use rocket::{fs::FileServer, get, post, routes, Build, Rocket, State};
 use types::{Message, MessageOut};
@@ -81,12 +81,10 @@ impl<'a> WebexBotServer {
     // ------------------------------------------------------------------------------
 
     pub fn add_command(
-        mut self,
+        self,
         command: &str,
         args: Vec<Box<dyn parser::Argument>>,
-        callback: Box<
-            dyn Fn(&WebexClient, Message, &parser::ArgTuple, &parser::ArgTuple) -> () + Send + Sync,
-        >,
+        callback: Callback,
     ) {
         self.server
             .state::<WebexBotState>()

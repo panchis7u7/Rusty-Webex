@@ -1,6 +1,5 @@
 use log::{debug, error};
 use std::io::{Error, ErrorKind};
-use std::marker::PhantomData;
 
 use crate::{types::Message, WebexClient};
 
@@ -9,6 +8,7 @@ use crate::{types::Message, WebexClient};
 // ###########################################################################
 
 pub type ArgTuple = Vec<(std::string::String, std::string::String)>;
+pub type Callback = Box<dyn Fn(&WebexClient, Message, &ArgTuple, &ArgTuple) -> () + Send + Sync>;
 
 // ###################################################################
 // Define the Argument trait
@@ -83,7 +83,7 @@ pub struct Command<'a> {
     pub command: String,
     pub required_arguments: ArgTuple,
     pub optional_arguments: ArgTuple,
-    pub callback: &'a Box<dyn Fn(&WebexClient, Message, &ArgTuple, &ArgTuple) -> () + Send + Sync>,
+    pub callback: &'a Callback,
 }
 
 impl<'a> Command<'a> {
@@ -102,13 +102,7 @@ impl<'a> Command<'a> {
 // ###################################################################
 
 pub(crate) struct Parser {
-    commands: std::collections::HashMap<
-        String,
-        (
-            Box<dyn Fn(&WebexClient, Message, &ArgTuple, &ArgTuple) -> () + Send + Sync>,
-            Vec<Box<dyn Argument>>,
-        ),
-    >,
+    commands: std::collections::HashMap<String, (Callback, Vec<Box<dyn Argument>>)>,
 }
 
 impl<'a> Parser {
@@ -131,12 +125,7 @@ impl<'a> Parser {
      * Callback: The custom user defined function that contains the command implementation.
      */
 
-    pub fn add_command(
-        &mut self,
-        command: &str,
-        args: Vec<Box<dyn Argument>>,
-        callback: Box<dyn Fn(&WebexClient, Message, &ArgTuple, &ArgTuple) -> () + Send + Sync>,
-    ) {
+    pub fn add_command(&mut self, command: &str, args: Vec<Box<dyn Argument>>, callback: Callback) {
         self.commands.insert(command.to_string(), (callback, args));
     }
 
