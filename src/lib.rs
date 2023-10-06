@@ -85,9 +85,7 @@ impl<'a> WebexBotServer {
         command: &str,
         args: Vec<Box<dyn parser::Argument>>,
         callback: Box<
-            dyn Fn(&WebexClient, &Message, &parser::ArgTuple, &parser::ArgTuple) -> ()
-                + Send
-                + Sync,
+            dyn Fn(&WebexClient, Message, &parser::ArgTuple, &parser::ArgTuple) -> () + Send + Sync,
         >,
     ) {
         self.server
@@ -133,7 +131,7 @@ async fn webhook_listener(
     match parsed_value {
         Ok(v) => (v.callback)(
             &state.client,
-            &detailed_message_info,
+            detailed_message_info,
             &v.required_arguments,
             &v.optional_arguments,
         ),

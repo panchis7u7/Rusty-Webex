@@ -83,7 +83,7 @@ pub struct Command<'a> {
     pub command: String,
     pub required_arguments: ArgTuple,
     pub optional_arguments: ArgTuple,
-    pub callback: &'a Box<dyn Fn(&WebexClient, &Message, &ArgTuple, &ArgTuple) -> () + Send + Sync>,
+    pub callback: &'a Box<dyn Fn(&WebexClient, Message, &ArgTuple, &ArgTuple) -> () + Send + Sync>,
 }
 
 impl<'a> Command<'a> {
@@ -105,7 +105,7 @@ pub(crate) struct Parser {
     commands: std::collections::HashMap<
         String,
         (
-            Box<dyn Fn(&WebexClient, &Message, &ArgTuple, &ArgTuple) -> () + Send + Sync>,
+            Box<dyn Fn(&WebexClient, Message, &ArgTuple, &ArgTuple) -> () + Send + Sync>,
             Vec<Box<dyn Argument>>,
         ),
     >,
@@ -135,7 +135,7 @@ impl<'a> Parser {
         &mut self,
         command: &str,
         args: Vec<Box<dyn Argument>>,
-        callback: Box<dyn Fn(&WebexClient, &Message, &ArgTuple, &ArgTuple) -> () + Send + Sync>,
+        callback: Box<dyn Fn(&WebexClient, Message, &ArgTuple, &ArgTuple) -> () + Send + Sync>,
     ) {
         self.commands.insert(command.to_string(), (callback, args));
     }
