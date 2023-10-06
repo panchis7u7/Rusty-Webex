@@ -7,16 +7,32 @@ use std::convert::TryFrom;
 //-----------------------------------------------------------------------------------------------
 #[derive(Deserialize, Debug)]
 pub struct Response<T> {
-    id: String,
-    name: String,
+    pub id: String,
+    pub name: String,
     #[serde(alias = "targetUrl")]
-    target_url: String,
-    resource: String,
-    event: String,
-    created: String,
+    pub target_url: String,
+    pub resource: String,
+    pub event: String,
+    pub created: String,
     #[serde(alias = "actorId")]
-    actor_id: String,
-    data: T,
+    pub actor_id: String,
+    pub data: T,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MessageEventResponse {
+    pub id: String,
+    #[serde(alias = "roomId")]
+    pub room_id: String,
+    #[serde(alias = "roomType")]
+    pub room_type: String,
+    #[serde(alias = "personId")]
+    pub person_id: String,
+    #[serde(alias = "personEmail")]
+    pub person_email: String,
+    #[serde(alias = "mentionedPeople")]
+    pub mentioned_people: Box<[String]>,
+    pub created: String,
 }
 
 // Room information.

@@ -1,5 +1,8 @@
 use log::{debug, error};
 use std::io::{Error, ErrorKind};
+use std::marker::PhantomData;
+
+use crate::{types::Message, WebexClient};
 
 // ###########################################################################
 // Tuple definition that contains the name:value mapping.
@@ -11,7 +14,7 @@ pub type ArgTuple = Vec<(std::string::String, std::string::String)>;
 // Define the Argument trait
 // ###################################################################
 
-pub trait Argument: Send {
+pub trait Argument: Send + Sync {
     fn name(&self) -> &str;
     fn is_required(&self) -> bool;
 }
@@ -20,12 +23,12 @@ pub trait Argument: Send {
 // Define the RequiredArgument struct implementing the Argument trait.
 // ###################################################################
 
-pub struct RequiredArgument<T: Send> {
+pub struct RequiredArgument<T: Send + Sync> {
     name: String,
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: Send> RequiredArgument<T> {
+impl<T: Send + Sync> RequiredArgument<T> {
     pub fn new(name: &str) -> Self {
         RequiredArgument {
             name: name.to_string(),
@@ -34,7 +37,7 @@ impl<T: Send> RequiredArgument<T> {
     }
 }
 
-impl<T: Send> Argument for RequiredArgument<T> {
+impl<T: Send + Sync> Argument for RequiredArgument<T> {
     fn name(&self) -> &str {
         &self.name
     }
@@ -62,7 +65,7 @@ impl<T> OptionalArgument<T> {
     }
 }
 
-impl<T: Send> Argument for OptionalArgument<T> {
+impl<T: Send + Sync> Argument for OptionalArgument<T> {
     fn name(&self) -> &str {
         &self.name
     }
@@ -76,13 +79,14 @@ impl<T: Send> Argument for OptionalArgument<T> {
 // Structure for a final parsed command.
 // ###################################################################
 
-pub struct Command {
+pub struct Command<'a> {
     pub command: String,
     pub required_arguments: ArgTuple,
     pub optional_arguments: ArgTuple,
+    pub callback: &'a Box<dyn Fn(&WebexClient, &Message, &ArgTuple, &ArgTuple) -> () + Send + Sync>,
 }
 
-impl Command {
+impl<'a> Command<'a> {
     const INVALID_CMD: &str = "You have entered an invalid Command!";
     const NO_CMD: &str = "Command was not specified!";
     // const INVALID_SYNTAX: &str = "Sorry, I could not understand you.";
@@ -101,13 +105,13 @@ pub(crate) struct Parser {
     commands: std::collections::HashMap<
         String,
         (
-            Box<dyn Fn(&ArgTuple, &ArgTuple) -> () + Send>,
+            Box<dyn Fn(&WebexClient, &Message, &ArgTuple, &ArgTuple) -> () + Send + Sync>,
             Vec<Box<dyn Argument>>,
         ),
     >,
 }
 
-impl Parser {
+impl<'a> Parser {
     pub fn new() -> Self {
         Parser {
             commands: std::collections::HashMap::new(),
@@ -118,13 +122,22 @@ impl Parser {
     // Append a command to the available (parsable). list of commands
     // ------------------------------------------------------------------------------
 
+    /**
+     * Arguments to be stored:
+     *
+     * Client: The webex client designated for listenining the incoming request.
+     * Command: The command string we want to listen for.
+     * Args: The vector of required/optional args that conform that specific command.
+     * Callback: The custom user defined function that contains the command implementation.
+     */
+
     pub fn add_command(
         &mut self,
-        name: &str,
+        command: &str,
         args: Vec<Box<dyn Argument>>,
-        callback: Box<dyn Fn(&ArgTuple, &ArgTuple) -> () + Send>,
+        callback: Box<dyn Fn(&WebexClient, &Message, &ArgTuple, &ArgTuple) -> () + Send + Sync>,
     ) {
-        self.commands.insert(name.to_string(), (callback, args));
+        self.commands.insert(command.to_string(), (callback, args));
     }
 
     // ------------------------------------------------------------------------------
@@ -187,14 +200,16 @@ impl Parser {
 
         debug!("Calling the callback function supplied on the argument list.");
         // Execute the callback function.
-        command_structure.0(&required_arguments, &optional_arguments);
+        // command_structure.0(&required_arguments, &optional_arguments);
 
         // Return the final parsed command with its respective required/optional
         // arguments classified.
+
         let command = Command {
             command: parts[1].to_string(),
-            optional_arguments,
-            required_arguments,
+            optional_arguments: optional_arguments,
+            required_arguments: required_arguments,
+            callback: &command_structure.0,
         };
 
         Ok(command)
