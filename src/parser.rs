@@ -1,5 +1,10 @@
 use log::{debug, error};
-use std::io::{Error, ErrorKind};
+use rocket::tokio;
+use std::{
+    future::Future,
+    io::{Error, ErrorKind},
+    pin::Pin,
+};
 
 use crate::{types::Message, WebexClient};
 
@@ -8,7 +13,16 @@ use crate::{types::Message, WebexClient};
 // ###########################################################################
 
 pub type ArgTuple = Vec<(std::string::String, std::string::String)>;
-pub type Callback = Box<dyn Fn(&WebexClient, Message, &ArgTuple, &ArgTuple) -> () + Send + Sync>;
+pub type Callback = Box<
+    dyn Fn(
+            &WebexClient,
+            Message,
+            &ArgTuple,
+            &ArgTuple,
+        ) -> (Pin<Box<dyn Future<Output = ()> + Send>>)
+        + Send
+        + Sync,
+>;
 
 // ###################################################################
 // Define the Argument trait
@@ -94,6 +108,20 @@ impl<'a> Command<'a> {
 
     pub fn invalid(error: &str) -> Error {
         Error::new(ErrorKind::InvalidData, format!("{}", error))
+    }
+
+    pub async fn callback<F, Fut>(
+        &self,
+        client: &WebexClient,
+        message: Message,
+        required_argument: &ArgTuple,
+        optional_arguments: &ArgTuple,
+        f: F,
+    ) where
+        F: Fn(&WebexClient, Message, &ArgTuple, &ArgTuple) -> Fut,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        tokio::spawn(f(client, message, required_argument, optional_arguments));
     }
 }
 

@@ -1,4 +1,6 @@
-use std::sync::{Arc, Mutex};
+use rocket::tokio;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use log::error;
 use parser::{Callback, Parser};
@@ -52,7 +54,7 @@ impl WebexClient {
 
 struct WebexBotState {
     client: WebexClient,
-    parser: Mutex<Parser>,
+    parser: Arc<Mutex<Parser>>,
 }
 
 pub struct WebexBotServer {
@@ -71,7 +73,7 @@ impl<'a> WebexBotServer {
                 .mount("/public", FileServer::from("static/"))
                 .manage(Arc::new(WebexBotState {
                     client: WebexClient::new(token),
-                    parser: Parser::new().into(),
+                    parser: Arc::new(Mutex::new(Parser::new())),
                 })),
         }
     }
@@ -80,19 +82,15 @@ impl<'a> WebexBotServer {
     // Add a command for the webex client to listent to and perform proper parsing.
     // ------------------------------------------------------------------------------
 
-    pub fn add_command(
+    pub async fn add_command(
         self,
         command: &str,
         args: Vec<Box<dyn parser::Argument>>,
         callback: Callback,
     ) {
-        self.server
-            .state::<WebexBotState>()
-            .unwrap()
-            .parser
-            .lock()
-            .unwrap()
-            .add_command(command, args, callback);
+        let server = self.server.state::<WebexBotState>().unwrap().parser.clone();
+        let mut server_unlock = server.lock().await;
+        server_unlock.add_command(command, args, callback);
     }
 }
 
@@ -122,17 +120,21 @@ async fn webhook_listener(
 
     // Parse the actual plain text data/message.
     let raw_message = detailed_message_info.text.clone().unwrap();
-    let parser = state.parser.lock().unwrap();
-    let parsed_value = parser.parse(raw_message);
+    let parser = state.parser.clone();
+    let parsed_value_unlock = parser.lock().await;
+    let parsed_value = parsed_value_unlock.parse(raw_message);
 
     // Check if the match was successful and execute the callback.
     match parsed_value {
-        Ok(v) => (v.callback)(
-            &state.client,
-            detailed_message_info,
-            &v.required_arguments,
-            &v.optional_arguments,
-        ),
+        Ok(v) => {
+            (v.callback)(
+                &state.client,
+                detailed_message_info,
+                &v.required_arguments,
+                &v.optional_arguments,
+            )
+            .await
+        }
         Err(e) => {
             error!("{}", e);
         }
