@@ -13,16 +13,12 @@ use crate::{types::Message, WebexClient};
 // ###########################################################################
 
 pub type ArgTuple = Vec<(std::string::String, std::string::String)>;
-pub type Callback = Box<
-    dyn Fn(
-            &WebexClient,
-            Message,
-            &ArgTuple,
-            &ArgTuple,
-        ) -> (Pin<Box<dyn Future<Output = ()> + Send>>)
-        + Send
-        + Sync,
->;
+pub type Callback = fn(
+    WebexClient,
+    Message,
+    ArgTuple,
+    ArgTuple,
+) -> (Pin<Box<dyn Future<Output = ()> + Send + Sync + 'static>>);
 
 // ###################################################################
 // Define the Argument trait
@@ -112,13 +108,13 @@ impl<'a> Command<'a> {
 
     pub async fn callback<F, Fut>(
         &self,
-        client: &WebexClient,
+        client: WebexClient,
         message: Message,
-        required_argument: &ArgTuple,
-        optional_arguments: &ArgTuple,
+        required_argument: ArgTuple,
+        optional_arguments: ArgTuple,
         f: F,
     ) where
-        F: Fn(&WebexClient, Message, &ArgTuple, &ArgTuple) -> Fut,
+        F: Fn(WebexClient, Message, ArgTuple, ArgTuple) -> Fut,
         Fut: Future<Output = ()> + Send + 'static,
     {
         tokio::spawn(f(client, message, required_argument, optional_arguments));

@@ -1,4 +1,6 @@
-use rocket::tokio;
+use rocket::futures::future;
+use rocket::{tokio, Error, Ignite};
+use std::future::Future;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -19,6 +21,7 @@ pub mod types;
 // Client that manages all interaction with the webex API's.
 // ###################################################################################
 
+#[derive(Clone)]
 pub struct WebexClient {
     pub bearer_token: String,
 }
@@ -58,7 +61,7 @@ struct WebexBotState {
 }
 
 pub struct WebexBotServer {
-    pub server: Rocket<Build>,
+    _server: Rocket<Build>,
 }
 
 impl<'a> WebexBotServer {
@@ -68,14 +71,18 @@ impl<'a> WebexBotServer {
 
     pub fn new(token: &str) -> WebexBotServer {
         WebexBotServer {
-            server: rocket::build()
+            _server: rocket::build()
                 .mount("/", routes![signature, webhook_listener])
                 .mount("/public", FileServer::from("static/"))
-                .manage(Arc::new(WebexBotState {
+                .manage(WebexBotState {
                     client: WebexClient::new(token),
                     parser: Arc::new(Mutex::new(Parser::new())),
-                })),
+                }),
         }
+    }
+
+    pub async fn launch(self) -> Result<Rocket<Ignite>, Error> {
+        self._server.launch().await
     }
 
     // ------------------------------------------------------------------------------
@@ -83,12 +90,17 @@ impl<'a> WebexBotServer {
     // ------------------------------------------------------------------------------
 
     pub async fn add_command(
-        self,
+        &'a self,
         command: &str,
         args: Vec<Box<dyn parser::Argument>>,
         callback: Callback,
     ) {
-        let server = self.server.state::<WebexBotState>().unwrap().parser.clone();
+        let server = self
+            ._server
+            .state::<WebexBotState>()
+            .unwrap()
+            .parser
+            .clone();
         let mut server_unlock = server.lock().await;
         server_unlock.add_command(command, args, callback);
     }
@@ -128,10 +140,10 @@ async fn webhook_listener(
     match parsed_value {
         Ok(v) => {
             (v.callback)(
-                &state.client,
+                state.client.clone(),
                 detailed_message_info,
-                &v.required_arguments,
-                &v.optional_arguments,
+                v.required_arguments,
+                v.optional_arguments,
             )
             .await
         }
