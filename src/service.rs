@@ -1,4 +1,4 @@
-pub const WEBEX_URI: &str = "https://webexapis.com/v1/";
+pub const WEBEX_URI: &'static str = "https://webexapis.com/v1/";
 
 use http::HeaderValue;
 use reqwest::header::ACCEPT;
@@ -51,8 +51,10 @@ use std::{mem::MaybeUninit, sync::Once};
 
 use self::endpoints::Gettable;
 
+// ###########################################################################
 // Singleton class
-// ----------------------------------------------------------------------------
+// ###########################################################################
+
 pub struct Service {
     client: Client,
     headers: HeaderMap,
@@ -83,8 +85,10 @@ impl Service {
     }
 }
 
+// ###########################################################################
 // Review the status for the response.
-// ----------------------------------------------------------------------------
+// ###########################################################################
+
 pub fn review_status(response: &reqwest::Response) -> () {
     match response.status() {
         reqwest::StatusCode::OK => {
@@ -99,8 +103,10 @@ pub fn review_status(response: &reqwest::Response) -> () {
     }
 }
 
+// ###########################################################################
 // Webex client specific functionality.
-// ----------------------------------------------------------------------------
+// ###########################################################################
+
 pub async fn send_message(token: &str, message_out: &types::MessageOut) -> Message {
     let client_service = Service::get_instance();
     let response = client_service
@@ -123,8 +129,10 @@ pub async fn send_message(token: &str, message_out: &types::MessageOut) -> Messa
     return message;
 }
 
+// ###########################################################################
 // Retrieve detailed information from a specific message..
-// ----------------------------------------------------------------------------
+// ###########################################################################
+
 pub async fn get_message_details(token: &str, message_id: &String) -> Message {
     let client_service = Service::get_instance();
     let response = client_service
@@ -150,5 +158,3 @@ pub async fn get_message_details(token: &str, message_id: &String) -> Message {
 
     return message;
 }
-
-//pub async fn send_card_message() -> reqwest::Response {}

@@ -1,7 +1,105 @@
 use crate::adaptive_card::AdaptiveCard;
+use crate::WebexClient;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::future::Future;
+use std::pin::Pin;
+
+/*
+
+pub async fn callback<F, Fut>(
+        &self,
+        client: WebexClient,
+        message: Message,
+        required_argument: ArgTuple,
+        optional_arguments: ArgTuple,
+        f: F,
+    ) where
+        F: Fn(WebexClient, Message, ArgTuple, ArgTuple) -> Fut,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        tokio::spawn(f(client, message, required_argument, optional_arguments));
+    }
+
+ */
+
+// ###########################################################################
+// Tuple definition that contains the name:value mapping.
+// ###########################################################################
+
+pub type ArgTuple = Vec<(std::string::String, std::string::String)>;
+pub type Callback = fn(
+    WebexClient,
+    Message,
+    ArgTuple,
+    ArgTuple,
+) -> Pin<Box<dyn Future<Output = ()> + Send + Sync + 'static>>;
+
+// ###################################################################
+// Define the Argument trait
+// ###################################################################
+
+pub trait Argument: Send + Sync {
+    fn name(&self) -> &str;
+    fn is_required(&self) -> bool;
+}
+
+// ###################################################################
+// Define the RequiredArgument struct implementing the Argument trait.
+// ###################################################################
+
+pub struct RequiredArgument<T: Send + Sync> {
+    pub name: String,
+    _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T: Send + Sync> RequiredArgument<T> {
+    pub fn new(name: &str) -> Self {
+        RequiredArgument {
+            name: name.to_string(),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<T: Send + Sync> Argument for RequiredArgument<T> {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn is_required(&self) -> bool {
+        true
+    }
+}
+
+// ###################################################################
+// Define the OptionalArgument struct implementing the Argument trait.
+// ###################################################################
+
+pub struct OptionalArgument<T> {
+    pub name: String,
+    _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T> OptionalArgument<T> {
+    pub fn new(name: &str) -> Self {
+        OptionalArgument {
+            name: name.to_string(),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<T: Send + Sync> Argument for OptionalArgument<T> {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn is_required(&self) -> bool {
+        false
+    }
+}
 
 // Common response information.
 //-----------------------------------------------------------------------------------------------

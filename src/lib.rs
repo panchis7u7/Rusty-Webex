@@ -1,14 +1,12 @@
-use rocket::futures::future;
 use rocket::{tokio, Error, Ignite};
-use std::future::Future;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use log::error;
-use parser::{Callback, Parser};
+use parser::Parser;
 use rocket::serde::json::Json;
 use rocket::{fs::FileServer, get, post, routes, Build, Rocket, State};
-use types::{Message, MessageOut};
+use types::{Argument, Callback, Message, MessageOut};
 
 use crate::types::{MessageEventResponse, Response};
 
@@ -92,7 +90,7 @@ impl<'a> WebexBotServer {
     pub async fn add_command(
         &'a self,
         command: &str,
-        args: Vec<Box<dyn parser::Argument>>,
+        args: Vec<Box<dyn Argument>>,
         callback: Callback,
     ) {
         let server = self
