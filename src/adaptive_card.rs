@@ -4,11 +4,16 @@
 // More info about the schema can be found https://adaptivecards.io/explorer/
 // ------------------------------------------------------------------------------------------
 
+// serde.
 use serde::{Deserialize, Serialize};
+
+// std.
 use std::collections::HashMap;
 
-// Adaptive Card structure for message attachment
-// ##########################################################################
+// ###########################################################################
+// Adaptive Card primary structure. (For message attachments)
+// ###########################################################################
+
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct AdaptiveCard {
     #[serde(rename = "type")]

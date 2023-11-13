@@ -1,22 +1,123 @@
+// own.
 use crate::adaptive_card::AdaptiveCard;
+use crate::WebexClient;
+
+// serde.
 use serde::{Deserialize, Serialize};
+
+// std.
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::future::Future;
+use std::pin::Pin;
+
+// ###########################################################################
+// Tuple definition that contains the name:value mapping.
+// ###########################################################################
+
+pub type ArgTuple = Vec<(std::string::String, std::string::String)>;
+pub type Callback = fn(
+    WebexClient,
+    Message,
+    ArgTuple,
+    ArgTuple,
+) -> Pin<Box<dyn Future<Output = ()> + Send + Sync + 'static>>;
+
+// ###################################################################
+// Define the Argument trait
+// ###################################################################
+
+pub trait Argument: Send + Sync {
+    fn name(&self) -> &str;
+    fn is_required(&self) -> bool;
+}
+
+// ###################################################################
+// Define the RequiredArgument struct implementing the Argument trait.
+// ###################################################################
+
+pub struct RequiredArgument<T: Send + Sync> {
+    pub name: String,
+    _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T: Send + Sync> RequiredArgument<T> {
+    pub fn new(name: &str) -> Self {
+        RequiredArgument {
+            name: name.to_string(),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<T: Send + Sync> Argument for RequiredArgument<T> {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn is_required(&self) -> bool {
+        true
+    }
+}
+
+// ###################################################################
+// Define the OptionalArgument struct implementing the Argument trait.
+// ###################################################################
+
+pub struct OptionalArgument<T> {
+    pub name: String,
+    _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T> OptionalArgument<T> {
+    pub fn new(name: &str) -> Self {
+        OptionalArgument {
+            name: name.to_string(),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<T: Send + Sync> Argument for OptionalArgument<T> {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn is_required(&self) -> bool {
+        false
+    }
+}
 
 // Common response information.
 //-----------------------------------------------------------------------------------------------
 #[derive(Deserialize, Debug)]
 pub struct Response<T> {
-    id: String,
-    name: String,
+    pub id: String,
+    pub name: String,
     #[serde(alias = "targetUrl")]
-    target_url: String,
-    resource: String,
-    event: String,
-    created: String,
+    pub target_url: String,
+    pub resource: String,
+    pub event: String,
+    pub created: String,
     #[serde(alias = "actorId")]
-    actor_id: String,
-    data: T,
+    pub actor_id: String,
+    pub data: T,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MessageEventResponse {
+    pub id: String,
+    #[serde(alias = "roomId")]
+    pub room_id: String,
+    #[serde(alias = "roomType")]
+    pub room_type: String,
+    #[serde(alias = "personId")]
+    pub person_id: String,
+    #[serde(alias = "personEmail")]
+    pub person_email: String,
+    #[serde(alias = "mentionedPeople")]
+    pub mentioned_people: Box<[String]>,
+    pub created: String,
 }
 
 // Room information.
