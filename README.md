@@ -55,23 +55,27 @@ let event_response_message = client.send_message(&event_response_message).await;
 ```
 
 ### Adaptive Cards
+</hr>
 
 You can generate you own personalized adaptive with proper rust type system:
 
 ```rust
 pub fn message_card(user: &String, message: &String) -> Attachment {
-        Attachment {
-            content_type: "application/vnd.microsoft.card.adaptive".to_string(),
-            content: AdaptiveCard::new().add_body(
-                CardElement::text_block(format!("{}: has sent the following message: {}", user, message))
-                    .set_wrap(true)
-                    .set_spacing(Spacing::Medium),
-            ),
-        }
+    Attachment {
+        content_type: "application/vnd.microsoft.card.adaptive".to_string(),
+        content: AdaptiveCard::new().add_body(
+            CardElement::text_block(format!("{}: has sent the following message: {}", user, message))
+                .set_wrap(true)
+                .set_spacing(Spacing::Medium),
+        ),
     }
+}
 
 event_response_message.attachments = Some(vec![templates::templates::message_card("Sebastian", "Hello from Rust, Webex!")])
 ```
+
+### Bot Server
+</hr>
 
 Setup casynchronous callbacks for specific webex commands:
 ```rust
