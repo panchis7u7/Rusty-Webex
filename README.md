@@ -16,6 +16,8 @@ Easy Webex API Integration: Rusty Webex abstracts away the complexities of the W
 
 + **Asynchronous Operations:** Built with asynchronous programming in mind, Rusty Webex utilizes Rust's powerful async/await syntax and integrates seamlessly with popular asynchronous runtimes. This allows you to perform non-blocking API calls and efficiently handle concurrent operations.
 
++ **Integrated Bot/Websocket Server:** Set up and deploy complex webex bots for all your automation necessities. With the flexible and user freindly callback function syntax, interact directly via webex or with custom embedded devices using the integrated websocket server.
+
 ## Getting Started
 To start using Rusty Webex in your project, add the following line to your Cargo.toml file:
 
@@ -29,13 +31,16 @@ Ensure that you have a compatible version of Rust installed. Rusty Webex require
 Please refer to the documentation for detailed usage examples, API reference, and guides on how to integrate Rusty Webex into your applications.
 
 ## Examples
-Here's a simple example that demonstrates how to use Rusty Webex reply to a webex message:
+Here's a simple example that demonstrates how to use the Rusty Webex client:
 
+Create a new webex bot server.
 ```rust
-let client = WebexClient::new(AUTH_TOKEN);
+let server = WebexBotServer::new(
+    std::env::var("TOKEN")
+        .expect("The TOKEN must be set.")
+        .as_str(),
+);
 ```
-
-Getting details of a particular message:
 
 ```rust
 let detailed_message_info = client.get_message_details(message_id).await;
@@ -66,6 +71,53 @@ pub fn message_card(user: &String, message: &String) -> Attachment {
     }
 
 event_response_message.attachments = Some(vec![templates::templates::message_card("Sebastian", "Hello from Rust, Webex!")])
+```
+
+Setup casynchronous callbacks for specific webex commands:
+```rust
+server.add_command("/say_hello", vec![], move |client, message, _required_args, _optional_args| {
+        Box::pin(async move {
+            let mut event_response_message = MessageOut::from(message);
+            event_response_message.text =
+                Some("Hello from the webex client!".to_string());
+            client
+                .send_message(&MessageOut::from(event_response_message))
+                .await;
+        })
+    },
+).await;
+```
+
+Call websocket connected devices that are registered within your websocket server:
+```rust
+server.add_command("/embedded", vec![Box::new(RequiredArgument::<String>::new("is_embedded"))],
+move |_client, _message, _required_args, _optional_args| {
+    Box::pin(async move {
+            
+            // Setup the websocket client for communication with the embedded device to the webex bot.
+            let ws_client = WebSocketClient::new(
+                "172.172.194.77", 8080, 2, vec![String::from("fut_assist")],
+            );
+            
+            let registration_url = ws_client.register().await;
+            println!("Registration URL from server: {}", &registration_url.url);
+            
+            // Generate sender and receiver for the websocket crated.
+            let (_sender, receiver) = ws_client
+                .start_ws_client(registration_url.url)
+                .await
+                .unwrap();
+            
+            // Spawn a task to listen for incoming messages
+            tokio::spawn(listen_for_messages(ws_client, receiver));
+        })
+    },
+).await;
+```
+
+Launch the server.
+```rust
+    let _ = server.launch().await;
 ```
 
 ## Contributing

@@ -1,15 +1,21 @@
-use rocket::{tokio, Error, Ignite};
+// std.
 use std::sync::Arc;
+
+// Tokio.
 use tokio::sync::Mutex;
 
-use log::error;
-use parser::Parser;
+// Rocket.
 use rocket::serde::json::Json;
 use rocket::{fs::FileServer, get, post, routes, Build, Rocket, State};
-use types::{Argument, Callback, Message, MessageOut};
+use rocket::{tokio, Error, Ignite};
 
+// logging.
+use log::error;
+
+// Own modules, crates and type imports.
 use crate::types::{MessageEventResponse, Response};
-
+use parser::Parser;
+use types::{Argument, Callback, Message, MessageOut};
 pub mod adaptive_card;
 mod parser;
 pub mod service;

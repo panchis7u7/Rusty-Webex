@@ -1,6 +1,11 @@
-use crate::types::{ArgTuple, Argument, Callback};
-use log::{debug, error};
+// std.
 use std::io::{Error, ErrorKind};
+
+// Logging.
+use log::{debug, error};
+
+// Own.
+use crate::types::{ArgTuple, Argument, Callback};
 
 // ###################################################################
 // Structure for a final parsed command.

@@ -1,28 +1,15 @@
+// own.
 use crate::adaptive_card::AdaptiveCard;
 use crate::WebexClient;
+
+// serde.
 use serde::{Deserialize, Serialize};
+
+// std.
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::future::Future;
 use std::pin::Pin;
-
-/*
-
-pub async fn callback<F, Fut>(
-        &self,
-        client: WebexClient,
-        message: Message,
-        required_argument: ArgTuple,
-        optional_arguments: ArgTuple,
-        f: F,
-    ) where
-        F: Fn(WebexClient, Message, ArgTuple, ArgTuple) -> Fut,
-        Fut: Future<Output = ()> + Send + 'static,
-    {
-        tokio::spawn(f(client, message, required_argument, optional_arguments));
-    }
-
- */
 
 // ###########################################################################
 // Tuple definition that contains the name:value mapping.

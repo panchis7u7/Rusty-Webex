@@ -1,8 +1,19 @@
-pub const WEBEX_URI: &'static str = "https://webexapis.com/v1/";
-
+// http.
 use http::HeaderValue;
+
+// reqwest.
 use reqwest::header::ACCEPT;
 use reqwest::header::CONTENT_TYPE;
+
+// ###########################################################################
+// Constants.
+// ###########################################################################
+
+pub const WEBEX_URI: &'static str = "https://webexapis.com/v1/";
+
+// ###########################################################################
+// Endpoint containers.
+// ###########################################################################
 
 mod endpoints {
     // Private crate to hold all types that the user shouldn't have to interact with.
