@@ -12,6 +12,28 @@ use std::future::Future;
 use std::pin::Pin;
 
 // ###########################################################################
+// Websocket user Register request, response and publish types.
+// ###########################################################################
+
+#[derive(Serialize, Deserialize)]
+pub struct Register {
+    pub user_id: u16,
+    pub groups: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct RegisterResponse {
+    pub url: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Publish {
+    pub user_id: u16,
+    pub group: String,
+    pub message: String,
+}
+
+// ###########################################################################
 // Tuple definition that contains the name:value mapping.
 // ###########################################################################
 
