@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 // std.
-use std::{collections::HashMap, fs::File, io::BufReader};
+use std::{collections::HashMap, fs::File, io::BufReader, path::Path};
 
 // ###########################################################################
 // Adaptive Card primary structure. (For message attachments)
@@ -57,8 +57,10 @@ impl AdaptiveCard {
     // Parse from json file.
     // ----------------------------------------------------------------------
 
-    pub fn from_json_reader(buf_reader: BufReader<File>) -> AdaptiveCard {
-        serde_json::from_reader(buf_reader).expect("error while reading json")
+    pub fn from_json_file_reader(file_path: &str) -> AdaptiveCard {
+        let json_file_path = Path::new(file_path);
+        let file = File::open(json_file_path).expect("file should open as read only");
+        serde_json::from_reader(BufReader::new(file)).expect("error while reading json")
     }
 
     // ----------------------------------------------------------------------
