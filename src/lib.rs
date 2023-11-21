@@ -30,12 +30,15 @@ use log::{debug, error, info};
 // Future
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
+use types::{Device, Device2, Devices};
 
 // Own modules, crates and type imports.
+use crate::error::WebexWebSocketError;
 use crate::types::{MessageEventResponse, Publish, Register, RegisterResponse, Response};
 use parser::Parser;
 use types::{Argument, Callback, Message as OwnMessage, MessageOut};
 pub mod adaptive_card;
+pub mod error;
 mod parser;
 pub mod service;
 pub mod types;
@@ -71,6 +74,22 @@ impl WebexClient {
 
     pub async fn get_message_details(&self, message_id: &String) -> OwnMessage {
         service::get_message_details(&self.bearer_token, message_id).await
+    }
+
+    // ------------------------------------------------------------------------------
+    // Retrieve all the registered devices.
+    // ------------------------------------------------------------------------------
+
+    pub async fn get_devices(&self) -> Devices {
+        service::get_devices(&self.bearer_token).await
+    }
+
+    // ------------------------------------------------------------------------------
+    // Create a new device.
+    // ------------------------------------------------------------------------------
+
+    pub async fn create_device(&self, device: Device) -> Option<Device> {
+        service::create_device(&self.bearer_token, device).await
     }
 }
 
@@ -363,6 +382,136 @@ pub async fn send_messages(
     if let Err(e) = ws_stream.send(message).await {
         eprintln!("Error sending message: {}", e);
     }
+}
+
+// ###################################################################################
+// Webex Web Socket Client.
+// ###################################################################################
+
+pub(crate) struct WebexWebSocketClient {
+    access_token: String,
+    webex_client: WebexClient,
+    device_url: String,
+    device_info: Option<Device>,
+    on_message: fn() -> (),
+    on_card_action: fn() -> (),
+}
+
+impl WebexWebSocketClient {
+    pub(crate) const DEFAULT_DEVICE_URL: &'static str = "https://wdm-a.wbx2.com/wdm/api/v1";
+
+    pub(crate) fn new(
+        self,
+        access_token: &str,
+        device_url: Option<&str>,
+        on_message: fn() -> (),
+        on_card_action: fn() -> (),
+    ) -> WebexWebSocketClient {
+        WebexWebSocketClient {
+            access_token: String::from(access_token),
+            webex_client: WebexClient::new(access_token),
+            device_url: String::from(device_url.unwrap_or(Self::DEFAULT_DEVICE_URL)),
+            device_info: None,
+            on_message: on_message,
+            on_card_action: on_card_action,
+        }
+    }
+
+    // ----------------------------------------------------------------------------
+    // Run the websocket RX/TX loop.
+    // ----------------------------------------------------------------------------
+    pub(crate) async fn run(&mut self) -> Result<(), WebexWebSocketError> {
+        if self.device_info.is_none() {
+            if self.get_device_info_or_create(Some(true)).await.is_err() {
+                error!("[WebexWebSocketClient - run]: Unable to fetch or create a new device.");
+                return Err(WebexWebSocketError::CreationError);
+            }
+        }
+
+        // Unwrap since we already verified for any errors.
+        let unwrapped_device_info = self.device_info.unwrap();
+
+        // Parse the registration URL as of a URL type.
+        let url = url::Url::parse(unwrapped_device_info.web_socket_url.unwrap().as_str()).unwrap();
+        debug!(
+            "[WebexWebSocketClient - run]: Parsed registration string: {}",
+            url
+        );
+
+        // Create channels to send and receive messages
+        let (sender, receiver) = mpsc::channel(32);
+
+        // let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
+        // tokio::spawn(read_stdin(stdin_tx));
+
+        let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
+        info!("[WebexWebSocketClient - run]: WebSocket handshake has been successfully completed");
+
+        // Split the WebSocket into sender and receiver.
+        let (ws_sender, ws_receiver) = ws_stream.split();
+
+        // Spawn a task to receive messages and forward them to the receiver channel
+        tokio::spawn(receive_messages(ws_receiver, sender.clone()));
+
+        // Spawn a task to send messages
+        tokio::spawn(send_messages(ws_sender));
+
+        Ok((sender, receiver))
+    }
+
+    // ----------------------------------------------------------------------------
+    // Get device info from the webex cloud; if it doesn't exist, one will be created.
+    // ----------------------------------------------------------------------------
+    pub(crate) async fn get_device_info_or_create(
+        &mut self,
+        check_existing: Option<bool>,
+    ) -> Result<Device, WebexWebSocketError> {
+        let device_data: Device = Device {
+            device_name: String::from("rust-websocket-client"),
+            device_type: String::from("DESKTOP"),
+            localized_model: String::from("rust"),
+            model: String::from("rust"),
+            name: String::from("rust-spark-client"),
+            system_name: String::from("rust-spark-client"),
+            system_version: String::from("0.1"),
+            web_socket_url: None,
+        };
+
+        if check_existing.unwrap_or(true) {
+            debug!("[WebexWebSocketClient - get_device_info_or_create]: Retrieving device list");
+            let devices = self.webex_client.get_devices().await;
+            for device in devices.items {
+                if device.name == device_data.name {
+                    debug!("[WebexWebSocketClient - get_device_info_or_create]: Device information: {}", device.name);
+                    self.device_info = Some(device.clone());
+                    return Ok(device);
+                }
+            }
+        }
+
+        info!("[WebexWebSocketClient - get_device_info_or_create]: Device does not exist, creating...");
+
+        // Create a new device:
+        let new_device = self.webex_client.create_device(device_data).await;
+        if new_device.is_none() {
+            return Err(WebexWebSocketError::CreationError);
+        }
+        self.device_info = new_device.clone();
+
+        info!("[WebexWebSocketClient - get_device_info_or_create]: Registered new device.");
+
+        Ok(new_device.unwrap().clone())
+    }
+
+    // ----------------------------------------------------------------------------
+    /**
+    * In order to geo-locate the correct DC to fetch the message from, you need to use the base64 Id of the
+    message.
+    @param activity: incoming websocket data
+    @return: base 64 message id
+    */
+    // ----------------------------------------------------------------------------
+    pub(crate) async fn get_base64_message_id(self) {}
 }
 
 // ###################################################################################

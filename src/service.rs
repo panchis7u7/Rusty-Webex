@@ -10,6 +10,7 @@ use reqwest::header::CONTENT_TYPE;
 // ###########################################################################
 
 pub const WEBEX_URI: &'static str = "https://webexapis.com/v1/";
+pub(crate) const DEFAULT_DEVICE_URL: &'static str = "https://wdm-a.wbx2.com/wdm/api/v1";
 
 // ###########################################################################
 // Endpoint containers.
@@ -17,7 +18,7 @@ pub const WEBEX_URI: &'static str = "https://webexapis.com/v1/";
 
 mod endpoints {
     // Private crate to hold all types that the user shouldn't have to interact with.
-    use crate::types::{AttachmentAction, Message, Organization, Person, Room, Team};
+    use crate::types::{AttachmentAction, Devices, Message, Organization, Person, Room, Team};
     use serde::Deserialize;
     // Trait for API types. Has to be public due to trait bounds limitations on webex API, but hidden
     // in a private crate so users don't see it.
@@ -49,13 +50,17 @@ mod endpoints {
         const API_ENDPOINT: &'static str = "teams";
     }
 
+    impl Gettable for Devices {
+        const API_ENDPOINT: &'static str = "devices";
+    }
+
     #[derive(Deserialize)]
     pub struct ListResult<T> {
         pub items: Vec<T>,
     }
 }
 
-use crate::types::{self, Message};
+use crate::types::{Device, Device2, Devices, Message, MessageOut};
 use http::HeaderMap;
 use reqwest::Client;
 use std::{mem::MaybeUninit, sync::Once};
@@ -118,7 +123,7 @@ pub fn review_status(response: &reqwest::Response) -> () {
 // Webex client specific functionality.
 // ###########################################################################
 
-pub async fn send_message(token: &str, message_out: &types::MessageOut) -> Message {
+pub async fn send_message(token: &str, message_out: &MessageOut) -> Message {
     let client_service = Service::get_instance();
     let response = client_service
         .client
@@ -141,7 +146,7 @@ pub async fn send_message(token: &str, message_out: &types::MessageOut) -> Messa
 }
 
 // ###########################################################################
-// Retrieve detailed information from a specific message..
+// Retrieve detailed information from a specific message.
 // ###########################################################################
 
 pub async fn get_message_details(token: &str, message_id: &String) -> Message {
@@ -168,4 +173,55 @@ pub async fn get_message_details(token: &str, message_id: &String) -> Message {
         .expect("failed to convert struct from json");
 
     return message;
+}
+
+// ###########################################################################
+// Retrieve devices which represent Webex RoomOS devices and Webex Calling phones.
+// ###########################################################################
+
+pub async fn get_devices(token: &str) -> Devices {
+    let client_service = Service::get_instance();
+    let response = client_service
+        .client
+        .get(format!("{}/{}", DEFAULT_DEVICE_URL, Devices::API_ENDPOINT))
+        .headers(client_service.headers.clone())
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap();
+
+    review_status(&response);
+
+    let devices: Devices = response
+        .json::<Devices>()
+        .await
+        .expect("[service - get_devices]: Failed to convert struct from json");
+
+    return devices;
+}
+
+// ###########################################################################
+// Create a new device.
+// ###########################################################################
+
+pub async fn create_device(token: &str, device: Device) -> Option<Device> {
+    let client_service = Service::get_instance();
+    let response = client_service
+        .client
+        .post(format!("{}{}", DEFAULT_DEVICE_URL, Devices::API_ENDPOINT))
+        .headers(client_service.headers.clone())
+        .json(&device)
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap();
+
+    review_status(&response);
+
+    let created_device = response
+        .json::<Device>()
+        .await
+        .expect("[service - create_device]: Failed to convert struct from json");
+
+    return Some(created_device);
 }
