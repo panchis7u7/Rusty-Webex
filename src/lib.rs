@@ -11,13 +11,17 @@ use reqwest::header::ACCEPT;
 use reqwest::header::CONTENT_TYPE;
 use reqwest::Client;
 
+// rustls.
+use rustls::RootCertStore;
+
 // Tokio.
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::Mutex;
-use tokio_tungstenite::WebSocketStream;
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use tokio_tungstenite::{
+    connect_async, connect_async_tls_with_config, tungstenite::protocol::Message, WebSocketStream,
+};
 
 // Rocket.
 use rocket::serde::json::Json;
@@ -30,7 +34,8 @@ use log::{debug, error, info};
 // Future
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
-use types::{Device, Device2, Devices};
+use types::DeviceDetails;
+use types::{Device, DevicesDetails};
 
 // Own modules, crates and type imports.
 use crate::error::WebexWebSocketError;
@@ -80,7 +85,7 @@ impl WebexClient {
     // Retrieve all the registered devices.
     // ------------------------------------------------------------------------------
 
-    pub async fn get_devices(&self) -> Devices {
+    pub(crate) async fn get_devices(&self) -> Option<DevicesDetails> {
         service::get_devices(&self.bearer_token).await
     }
 
@@ -88,7 +93,7 @@ impl WebexClient {
     // Create a new device.
     // ------------------------------------------------------------------------------
 
-    pub async fn create_device(&self, device: Device) -> Option<Device> {
+    pub(crate) async fn create_device(&self, device: Device) -> Option<DeviceDetails> {
         service::create_device(&self.bearer_token, device).await
     }
 }
@@ -104,6 +109,7 @@ struct WebexBotState {
 
 pub struct WebexBotServer {
     _server: Rocket<Build>,
+    _token: String,
 }
 
 impl<'a> WebexBotServer {
@@ -120,10 +126,18 @@ impl<'a> WebexBotServer {
                     client: WebexClient::new(token),
                     parser: Arc::new(Mutex::new(Parser::new())),
                 }),
+            _token: String::from(token),
         }
     }
 
-    pub async fn launch(self) -> Result<Rocket<Ignite>, RocketError> {
+    pub async fn launch(
+        self,
+        on_message: fn() -> (),
+        on_card_action: fn() -> (),
+    ) -> Result<Rocket<Ignite>, RocketError> {
+        let mut webex_ws =
+            WebexWebSocketClient::new(self._token.as_str(), None, on_message, on_card_action);
+        let _ = webex_ws.run().await;
         self._server.launch().await
     }
 
@@ -392,7 +406,7 @@ pub(crate) struct WebexWebSocketClient {
     access_token: String,
     webex_client: WebexClient,
     device_url: String,
-    device_info: Option<Device>,
+    device_info: Option<DeviceDetails>,
     on_message: fn() -> (),
     on_card_action: fn() -> (),
 }
@@ -401,7 +415,6 @@ impl WebexWebSocketClient {
     pub(crate) const DEFAULT_DEVICE_URL: &'static str = "https://wdm-a.wbx2.com/wdm/api/v1";
 
     pub(crate) fn new(
-        self,
         access_token: &str,
         device_url: Option<&str>,
         on_message: fn() -> (),
@@ -429,14 +442,35 @@ impl WebexWebSocketClient {
         }
 
         // Unwrap since we already verified for any errors.
-        let unwrapped_device_info = self.device_info.unwrap();
+        let unwrapped_device_info = self.device_info.clone().unwrap();
 
         // Parse the registration URL as of a URL type.
-        let url = url::Url::parse(unwrapped_device_info.web_socket_url.unwrap().as_str()).unwrap();
+        let url = url::Url::parse(unwrapped_device_info.web_socket_url.as_str()).unwrap();
         debug!(
             "[WebexWebSocketClient - run]: Parsed registration string: {}",
             url
         );
+
+        // Add certificates from the native certificate store
+        let mut roots = RootCertStore::empty();
+        for cert in rustls_native_certs::load_native_certs().expect("Could not load platform certs")
+        {
+            let cert = rustls::Certificate(cert.0);
+            roots.add(&cert).unwrap();
+        }
+
+        // let cert_file = fs::read("certs/localhost.crt.der").unwrap();
+        // let rust_cert = rustls::Certificate(cert_file);
+        // let mut root_cert_store = rustls::RootCertStore::empty();
+        // root_cert_store.add(&rust_cert).unwrap();
+
+        let config = rustls::ClientConfig::builder()
+            .with_safe_defaults()
+            .with_root_certificates(roots)
+            .with_no_client_auth();
+
+        // Create a TlS Connector with the configured root certificates
+        let tls_connector = tokio_tungstenite::Connector::Rustls(Arc::new(config));
 
         // Create channels to send and receive messages
         let (sender, receiver) = mpsc::channel(32);
@@ -444,7 +478,9 @@ impl WebexWebSocketClient {
         // let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
         // tokio::spawn(read_stdin(stdin_tx));
 
-        let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
+        let (ws_stream, _) = connect_async_tls_with_config(url, None, false, Some(tls_connector))
+            .await
+            .expect("Failed to connect");
         info!("[WebexWebSocketClient - run]: WebSocket handshake has been successfully completed");
 
         // Split the WebSocket into sender and receiver.
@@ -456,7 +492,7 @@ impl WebexWebSocketClient {
         // Spawn a task to send messages
         tokio::spawn(send_messages(ws_sender));
 
-        Ok((sender, receiver))
+        Ok(())
     }
 
     // ----------------------------------------------------------------------------
@@ -465,7 +501,7 @@ impl WebexWebSocketClient {
     pub(crate) async fn get_device_info_or_create(
         &mut self,
         check_existing: Option<bool>,
-    ) -> Result<Device, WebexWebSocketError> {
+    ) -> Result<DeviceDetails, WebexWebSocketError> {
         let device_data: Device = Device {
             device_name: String::from("rust-websocket-client"),
             device_type: String::from("DESKTOP"),
@@ -474,17 +510,19 @@ impl WebexWebSocketClient {
             name: String::from("rust-spark-client"),
             system_name: String::from("rust-spark-client"),
             system_version: String::from("0.1"),
-            web_socket_url: None,
         };
 
         if check_existing.unwrap_or(true) {
             debug!("[WebexWebSocketClient - get_device_info_or_create]: Retrieving device list");
             let devices = self.webex_client.get_devices().await;
-            for device in devices.items {
-                if device.name == device_data.name {
-                    debug!("[WebexWebSocketClient - get_device_info_or_create]: Device information: {}", device.name);
-                    self.device_info = Some(device.clone());
-                    return Ok(device);
+            if devices.is_some() {
+                let devices = devices.unwrap();
+                for device in devices.devices {
+                    if device.name == device_data.name {
+                        debug!("[WebexWebSocketClient - get_device_info_or_create]: Device information: {}", device.name);
+                        self.device_info = Some(device.clone());
+                        return Ok(device);
+                    }
                 }
             }
         }

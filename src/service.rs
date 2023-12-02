@@ -18,7 +18,9 @@ pub(crate) const DEFAULT_DEVICE_URL: &'static str = "https://wdm-a.wbx2.com/wdm/
 
 mod endpoints {
     // Private crate to hold all types that the user shouldn't have to interact with.
-    use crate::types::{AttachmentAction, Devices, Message, Organization, Person, Room, Team};
+    use crate::types::{
+        AttachmentAction, DevicesDetails, Message, Organization, Person, Room, Team,
+    };
     use serde::Deserialize;
     // Trait for API types. Has to be public due to trait bounds limitations on webex API, but hidden
     // in a private crate so users don't see it.
@@ -50,7 +52,7 @@ mod endpoints {
         const API_ENDPOINT: &'static str = "teams";
     }
 
-    impl Gettable for Devices {
+    impl Gettable for DevicesDetails {
         const API_ENDPOINT: &'static str = "devices";
     }
 
@@ -60,7 +62,8 @@ mod endpoints {
     }
 }
 
-use crate::types::{Device, Device2, Devices, Message, MessageOut};
+use crate::types::DeviceDetails;
+use crate::types::{Device, DevicesDetails, Message, MessageOut};
 use http::HeaderMap;
 use reqwest::Client;
 use std::{mem::MaybeUninit, sync::Once};
@@ -105,16 +108,19 @@ impl Service {
 // Review the status for the response.
 // ###########################################################################
 
-pub fn review_status(response: &reqwest::Response) -> () {
+pub fn review_status(response: &reqwest::Response) -> reqwest::StatusCode {
     match response.status() {
         reqwest::StatusCode::OK => {
-            log::debug!("Succesful request: {:?}", response)
+            log::debug!("Succesful request: {:?}", response);
+            reqwest::StatusCode::OK
         }
         reqwest::StatusCode::NOT_FOUND => {
-            log::debug!("Got 404! Haven't found resource!: {:?}", response)
+            log::debug!("Got 404! Haven't found resource!: {:?}", response);
+            reqwest::StatusCode::NOT_FOUND
         }
         _ => {
-            log::error!("Got 404! Haven't found resource!: {:?}", response)
+            log::error!("Got 404! Haven't found resource!: {:?}", response);
+            reqwest::StatusCode::NOT_FOUND
         }
     }
 }
@@ -179,36 +185,46 @@ pub async fn get_message_details(token: &str, message_id: &String) -> Message {
 // Retrieve devices which represent Webex RoomOS devices and Webex Calling phones.
 // ###########################################################################
 
-pub async fn get_devices(token: &str) -> Devices {
+pub(crate) async fn get_devices(token: &str) -> Option<DevicesDetails> {
     let client_service = Service::get_instance();
     let response = client_service
         .client
-        .get(format!("{}/{}", DEFAULT_DEVICE_URL, Devices::API_ENDPOINT))
+        .get(format!(
+            "{}/{}",
+            DEFAULT_DEVICE_URL,
+            DevicesDetails::API_ENDPOINT
+        ))
         .headers(client_service.headers.clone())
         .bearer_auth(token)
         .send()
         .await
         .unwrap();
 
-    review_status(&response);
+    if review_status(&response) == reqwest::StatusCode::NOT_FOUND {
+        return None;
+    }
 
-    let devices: Devices = response
-        .json::<Devices>()
+    let devices: DevicesDetails = response
+        .json::<DevicesDetails>()
         .await
         .expect("[service - get_devices]: Failed to convert struct from json");
 
-    return devices;
+    return Some(devices);
 }
 
 // ###########################################################################
 // Create a new device.
 // ###########################################################################
 
-pub async fn create_device(token: &str, device: Device) -> Option<Device> {
+pub(crate) async fn create_device(token: &str, device: Device) -> Option<DeviceDetails> {
     let client_service = Service::get_instance();
     let response = client_service
         .client
-        .post(format!("{}{}", DEFAULT_DEVICE_URL, Devices::API_ENDPOINT))
+        .post(format!(
+            "{}/{}",
+            DEFAULT_DEVICE_URL,
+            DevicesDetails::API_ENDPOINT
+        ))
         .headers(client_service.headers.clone())
         .json(&device)
         .bearer_auth(token)
@@ -219,7 +235,7 @@ pub async fn create_device(token: &str, device: Device) -> Option<Device> {
     review_status(&response);
 
     let created_device = response
-        .json::<Device>()
+        .json::<DeviceDetails>()
         .await
         .expect("[service - create_device]: Failed to convert struct from json");
 

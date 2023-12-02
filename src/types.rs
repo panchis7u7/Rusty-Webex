@@ -170,33 +170,34 @@ pub struct Device2 {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-pub struct Devices {
-    pub items: Vec<Device>,
+pub(crate) struct DevicesDetails {
+    pub(crate) devices: Vec<DeviceDetails>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Device {
     pub(crate) device_name: String,
     pub(crate) device_type: String,
-    pub(crate) localized_model: String,
-    pub(crate) model: String,
     pub(crate) name: String,
+    pub(crate) model: String,
+    pub(crate) localized_model: String,
     pub(crate) system_name: String,
     pub(crate) system_version: String,
-    pub(crate) web_socket_url: Option<String>,
 }
-/*
-pub(crate) struct Device2 {
-    pub(crate) device_name: &'static str,
-    pub(crate) device_type: &'static str,
-    pub(crate) localized_model: &'static str,
-    pub(crate) model: &'static str,
-    pub(crate) name: &'static str,
-    pub(crate) system_name: &'static str,
-    pub(crate) system_version: &'static str,
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DeviceDetails {
+    pub(crate) url: String,
+    pub(crate) device_type: String,
+    pub(crate) name: String,
+    pub(crate) model: String,
+    pub(crate) localized_model: String,
+    pub(crate) system_name: String,
+    pub(crate) system_version: String,
+    pub web_socket_url: String,
 }
-*/
 
 // Room information.
 //-----------------------------------------------------------------------------------------------
