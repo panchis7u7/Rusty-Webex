@@ -144,35 +144,6 @@ pub struct MessageEventResponse {
 
 // Device information.
 //-----------------------------------------------------------------------------------------------
-#[derive(Deserialize, Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct Device2 {
-    pub id: String,
-    pub display_name: String,
-    pub person_id: String,
-    pub org_id: String,
-    pub capabilities: Vec<String>,
-    pub permissions: Vec<String>,
-    pub product: String,
-    #[serde(rename = "type")]
-    pub type_field: String,
-    pub tags: Vec<String>,
-    pub serial: String,
-    pub software: String,
-    pub primary_sip_url: String,
-    pub sip_urls: Vec<String>,
-    pub error_codes: Vec<String>,
-    pub connection_status: String,
-    pub created: String,
-    pub first_seen: String,
-    pub last_seen: String,
-    pub managed_by: String,
-}
-
-#[derive(Deserialize, Serialize, Debug)]
-pub(crate) struct DevicesDetails {
-    pub(crate) devices: Vec<DeviceDetails>,
-}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -184,6 +155,11 @@ pub(crate) struct Device {
     pub(crate) localized_model: String,
     pub(crate) system_name: String,
     pub(crate) system_version: String,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub(crate) struct DevicesDetails {
+    pub(crate) devices: Vec<DeviceDetails>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

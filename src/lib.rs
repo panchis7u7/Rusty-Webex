@@ -1,11 +1,14 @@
 // std.
 use std::error::Error;
+use std::net::TcpStream;
 use std::sync::Arc;
 
+use futures_util::join;
 // http.
 use http::HeaderMap;
 use http::HeaderValue;
 
+use log::warn;
 // reqwest.
 use reqwest::header::ACCEPT;
 use reqwest::header::CONTENT_TYPE;
@@ -19,6 +22,7 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::Mutex;
+use tokio_tungstenite::MaybeTlsStream;
 use tokio_tungstenite::{
     connect_async, connect_async_tls_with_config, tungstenite::protocol::Message, WebSocketStream,
 };
@@ -36,6 +40,7 @@ use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use types::DeviceDetails;
 use types::{Device, DevicesDetails};
+use uuid::Uuid;
 
 // Own modules, crates and type imports.
 use crate::error::WebexWebSocketError;
@@ -222,6 +227,7 @@ pub struct WebSocketClient {
     _headers: HeaderMap,
 }
 
+// TODO: Move the WebSocketClient requests to the service.
 impl WebSocketClient {
     // ----------------------------------------------------------------------------
     // Function for generating a new websocket client instance struct.
@@ -391,11 +397,11 @@ pub async fn send_messages(
 ) {
     // This could be a loop where you send messages as needed
     // For the example, we're just sending one message and then exiting
-    let message = Message::Text("Hello, WebSocket Server!".into());
+    // let message = Message::Text("Hello, WebSocket Server!".into());
 
-    if let Err(e) = ws_stream.send(message).await {
-        eprintln!("Error sending message: {}", e);
-    }
+    // if let Err(e) = ws_stream.send(message).await {
+    //     eprintln!("Error sending message: {}", e);
+    // }
 }
 
 // ###################################################################################
@@ -472,26 +478,59 @@ impl WebexWebSocketClient {
         // Create a TlS Connector with the configured root certificates
         let tls_connector = tokio_tungstenite::Connector::Rustls(Arc::new(config));
 
-        // Create channels to send and receive messages
-        let (sender, receiver) = mpsc::channel(32);
+        let (mut ws_stream, _) =
+            connect_async_tls_with_config(url, None, true, Some(tls_connector))
+                .await
+                .expect("Failed to connect");
 
-        // let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
-        // tokio::spawn(read_stdin(stdin_tx));
-
-        let (ws_stream, _) = connect_async_tls_with_config(url, None, false, Some(tls_connector))
-            .await
-            .expect("Failed to connect");
         info!("[WebexWebSocketClient - run]: WebSocket handshake has been successfully completed");
+        info!("[WebexWebSocketClient - run]: WebSocket opened!");
 
-        // Split the WebSocket into sender and receiver.
-        let (ws_sender, ws_receiver) = ws_stream.split();
+        // Generate authentication data.
+        let auth_data = &serde_json::json!({
+            "uuid": Uuid::new_v4().to_string(),
+            "type": "authorization",
+            "data": {"token": format!("Bearer {}", self.access_token)}
+        });
 
-        // Spawn a task to receive messages and forward them to the receiver channel
-        tokio::spawn(receive_messages(ws_receiver, sender.clone()));
+        let _ = ws_stream.send(Message::Text(auth_data.to_string()));
+
+        loop {
+            tokio::select! {
+                ws_msg = ws_stream.next() => {
+                    match ws_msg {
+                        Some(msg) => match msg {
+                            Ok(msg) => match msg {
+                                Message::Text(x) => info!("Text message received {:?}",x),
+                                Message::Binary(x) => info!("Binary message received {:?}",x),
+                                Message::Ping(x) => info!("Ping {:?}",x),
+                                Message::Pong(x) => info!("Pong message received {:?}",x),
+                                Message::Close(x) => warn!("Close message received {:?}",x),
+                                Message::Frame(x) => info!("Frame message received {:?}",x),
+                            }
+                            , Err(_) => {error!("Server went away!"); break;}
+                        },
+                        None => {info!("No message!"); break;}
+                    }
+                }
+            }
+        }
+
+        // Send the authentication data.
+        // let message = Message::Text(json.to_string());
+        // let _ = ws_sender.send(message).await;
 
         // Spawn a task to send messages
-        tokio::spawn(send_messages(ws_sender));
+        // tokio::spawn(send_messages(ws_sender));
 
+        // Spawn a task to receive messages and forward them to the receiver channel
+        // tokio::spawn(receive_messages(ws_receiver, sender.clone()));
+        // join!(tokio::spawn(receive_messages(ws_receiver, sender.clone())));
+
+        // Gracefuly close the websocket connection.
+        let _ = ws_stream.send(Message::Close((None)));
+        let close = ws_stream.next().await;
+        info!("Server close message: {:?}", close);
         Ok(())
     }
 
@@ -512,6 +551,7 @@ impl WebexWebSocketClient {
             system_version: String::from("0.1"),
         };
 
+        // Check if a existing device is related to the specific token.
         if check_existing.unwrap_or(true) {
             debug!("[WebexWebSocketClient - get_device_info_or_create]: Retrieving device list");
             let devices = self.webex_client.get_devices().await;
@@ -529,7 +569,7 @@ impl WebexWebSocketClient {
 
         info!("[WebexWebSocketClient - get_device_info_or_create]: Device does not exist, creating...");
 
-        // Create a new device:
+        // Create a new device.
         let new_device = self.webex_client.create_device(device_data).await;
         if new_device.is_none() {
             return Err(WebexWebSocketError::CreationError);
@@ -550,6 +590,40 @@ impl WebexWebSocketClient {
     */
     // ----------------------------------------------------------------------------
     pub(crate) async fn get_base64_message_id(self) {}
+}
+
+// ----------------------------------------------------------------------------
+// Function to receive messages from the WebSocket and forward them to the channel.
+// ----------------------------------------------------------------------------
+async fn webex_websocket_receive_messages(
+    mut ws_stream: SplitStream<
+        WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+    >,
+) {
+    tokio::select! {
+        ws_msg = ws_stream.next() => {
+            match ws_msg {
+                Some(msg) => match msg {
+                    Ok(msg) => match msg {
+                        Message::Text(x) => info!("Text message received {:?}",x),
+                        Message::Binary(x) => info!("Binary message received {:?}",x),
+                        Message::Ping(x) => info!("Ping {:?}",x),
+                        Message::Pong(x) => info!("Pong message received {:?}",x),
+                        Message::Close(x) => info!("Close message received {:?}",x),
+                        Message::Frame(x) => info!("Frame message received {:?}",x),
+                    }
+                    , Err(_) => {error!("Server went away!"); return;}
+                },
+                None => {info!("No message!"); return;}
+            }
+        }
+    }
+    // while let Some(message) = ws_stream.next().await {
+    //     debug!(
+    //         "[rusty_webex - webex_websocket_receive_messages]: Received message: {}",
+    //         message.unwrap().to_text().unwrap()
+    //     );
+    // }
 }
 
 // ###################################################################################
