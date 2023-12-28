@@ -16,7 +16,7 @@ use std::pin::Pin;
 // ###########################################################################
 
 #[derive(Serialize, Deserialize)]
-pub struct WebSocketServer {
+pub struct RemoteTransportWebSocketServer {
     pub host: &'static str,
     pub port: u16,
     pub user_id: u16,

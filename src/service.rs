@@ -243,14 +243,17 @@ pub(crate) async fn create_device(token: &str, device: Device) -> Option<DeviceD
 }
 
 pub(crate) mod websocket {
-    use crate::types::{Publish, Register, RegisterResponse, WebSocketServer};
+    use crate::types::{Publish, Register, RegisterResponse, RemoteTransportWebSocketServer};
 
     use super::{review_status, Service};
 
     // ----------------------------------------------------------------------------
     // Retrieve a new websocket url from the server.
     // ----------------------------------------------------------------------------
-    pub async fn register(endpoint: &str, websocket_server: WebSocketServer) -> RegisterResponse {
+    pub async fn register(
+        endpoint: &str,
+        websocket_server: &RemoteTransportWebSocketServer,
+    ) -> RegisterResponse {
         let client_service = Service::get_instance();
         let response = client_service
             .client
@@ -285,7 +288,7 @@ pub(crate) mod websocket {
         endpoint: &str,
         group: String,
         message: serde_json::Value,
-        websocket_server: WebSocketServer,
+        websocket_server: &RemoteTransportWebSocketServer,
     ) {
         let client_service = Service::get_instance();
         let response = client_service

@@ -208,162 +208,105 @@ impl WebSocketClient {
 // Transport WebSocket Client.
 // ###################################################################################
 
-pub mod transport {
-    use futures_util::stream::{SplitSink, SplitStream};
-    use futures_util::StreamExt;
-    use http::HeaderMap;
-    use http::HeaderValue;
-    use log::{debug, info};
-    use reqwest::header::ACCEPT;
-    use reqwest::header::CONTENT_TYPE;
-    use reqwest::Client;
-    use rocket::tokio;
-    use std::error::Error;
-    use tokio::sync::mpsc;
-    use tokio::sync::mpsc::Receiver;
-    use tokio::sync::mpsc::Sender;
-    use tokio_tungstenite::{connect_async, tungstenite::protocol::Message, WebSocketStream};
+use futures_util::stream::{SplitSink, SplitStream};
+use http::HeaderMap;
+use http::HeaderValue;
+use reqwest::header::ACCEPT;
+use reqwest::header::CONTENT_TYPE;
+use reqwest::Client;
+use rocket::tokio;
+use std::error::Error;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::Sender;
 
-    use crate::types::{RegisterResponse, WebSocketServer};
+use crate::types::{RegisterResponse, RemoteTransportWebSocketServer};
 
-    pub struct TransportWebSocketClient {
-        host: String,
-        port: u16,
-        user_id: u16,
-        subscription_groups: Vec<String>,
-        _client: Client,
-        _headers: HeaderMap,
+pub struct TransportWebSocketClient {
+    remote_ws_server: RemoteTransportWebSocketServer,
+    _client: Client,
+    _websocket: Option<WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>>,
+}
+
+impl TransportWebSocketClient {
+    // ----------------------------------------------------------------------------
+    // Function for generating a new websocket client instance struct.
+    // ----------------------------------------------------------------------------
+
+    pub fn new(remote_ws_server: RemoteTransportWebSocketServer) -> TransportWebSocketClient {
+        TransportWebSocketClient {
+            remote_ws_server,
+            _client: Client::new(),
+            _websocket: None,
+        }
     }
 
-    impl TransportWebSocketClient {
-        // ----------------------------------------------------------------------------
-        // Function for generating a new websocket client instance struct.
-        // ----------------------------------------------------------------------------
+    // ------------------------------------------------------------------------------
+    // Register to the Transport Websocket Server.
+    // ------------------------------------------------------------------------------
 
-        pub fn new(
-            host: &str,
-            port: u16,
-            user_id: u16,
-            subscription_groups: Vec<String>,
-        ) -> TransportWebSocketClient {
-            let mut headers = HeaderMap::new();
-            headers.insert(
-                CONTENT_TYPE,
-                HeaderValue::from_str("application/json").unwrap(),
-            );
-            headers.insert(ACCEPT, HeaderValue::from_str("application/json").unwrap());
+    pub async fn register(&self, endpoint: &str) -> RegisterResponse {
+        crate::service::websocket::register(endpoint, &self.remote_ws_server).await
+    }
 
-            TransportWebSocketClient {
-                host: String::from(host),
-                port,
-                user_id,
-                subscription_groups,
-                _client: Client::new(),
-                _headers: headers,
-            }
+    // ------------------------------------------------------------------------------
+    // Publish a message to all endpoints that share the same group.
+    // ------------------------------------------------------------------------------
+
+    pub async fn publish(&self, endpoint: &str, group: String, message: serde_json::Value) {
+        crate::service::websocket::publish(endpoint, group, message, &self.remote_ws_server).await;
+    }
+
+    // ----------------------------------------------------------------------------
+    // Initialize WebSocket Client.
+    // ----------------------------------------------------------------------------
+    pub async fn connect(
+        &mut self,
+        registration_url: String,
+        is_secure: bool,
+    ) -> Result<(), Box<WebSocketError>> {
+        // Parse the ws url string to a proper URL structure.
+        let parsed_url = Url::parse(&registration_url).unwrap();
+
+        // Create a new websocket connection based on security requirements.
+        // TODO: Check for errors at the unwrap stage of the websocket stream creation.
+        if is_secure {
+            self._websocket = Some(connect_secure(parsed_url).await.unwrap());
+        } else {
+            self._websocket = Some(connect(parsed_url).await.unwrap());
         }
 
-        // ------------------------------------------------------------------------------
-        // Register to the Transport Websocket Server.
-        // ------------------------------------------------------------------------------
-
-        pub async fn register(
-            &self,
-            endpoint: &str,
-            websocket_server: WebSocketServer,
-        ) -> RegisterResponse {
-            crate::service::websocket::register(endpoint, websocket_server).await
-        }
-
-        // ------------------------------------------------------------------------------
-        // Publish a message to all endpoints that share the same group.
-        // ------------------------------------------------------------------------------
-
-        pub async fn publish(
-            &self,
-            endpoint: &str,
-            group: String,
-            message: serde_json::Value,
-            websocket_server: WebSocketServer,
-        ) {
-            crate::service::websocket::register(endpoint, websocket_server).await;
-        }
-
-        // ----------------------------------------------------------------------------
-        // Initialize WebSocket Client.
-        // ----------------------------------------------------------------------------
-        pub async fn start_ws_client(
-            &self,
-            registration_url: String,
-        ) -> Result<(Sender<Message>, Receiver<Message>), Box<dyn Error>> {
-            // Parse the registration URL as of a URL type.
-            let url = url::Url::parse(&registration_url).unwrap();
-            debug!("Parsed registration string: {}", url);
-
-            // Create channels to send and receive messages
-            let (sender, receiver) = mpsc::channel(32);
-
-            // let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
-            // tokio::spawn(read_stdin(stdin_tx));
-
-            let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
-            info!("WebSocket handshake has been successfully completed");
-
-            // Split the WebSocket into sender and receiver.
-            let (ws_sender, ws_receiver) = ws_stream.split();
-
-            // Spawn a task to receive messages and forward them to the receiver channel
-            tokio::spawn(receive_messages(ws_receiver, sender.clone()));
-
-            // Spawn a task to send messages
-            tokio::spawn(send_messages(ws_sender));
-
-            Ok((sender, receiver))
-        }
+        Ok(())
     }
 
     // ----------------------------------------------------------------------------
     // Function to receive messages from the WebSocket and forward them to the channel.
     // ----------------------------------------------------------------------------
-    async fn receive_messages(
-        ws_stream: SplitStream<
-            WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
-        >,
-        sender: Sender<Message>,
-    ) {
-        let mut ws_stream = ws_stream;
-
-        while let Some(message) = ws_stream.next().await {
-            match message {
-                Ok(msg) => {
-                    // Forward the received message to the channel
-                    if sender.send(msg).await.is_err() {
-                        eprintln!("Receiver dropped, closing connection.");
-                        return;
+    pub async fn listen_for_messages(
+        self,
+        callback: fn(message: serde_json::Value) -> (),
+    ) -> Result<(), WebSocketError> {
+        let mut websocket_stream = self._websocket.unwrap();
+        // Read for incoming webex messages.
+        loop {
+            tokio::select! {
+                ws_msg = websocket_stream.next() => {
+                    match ws_msg {
+                        Some(msg) => match msg {
+                            Ok(msg) => match msg {
+                                Message::Text(x) => {debug!("Text message received {:?}",x); callback(serde_json::to_value(x).unwrap())},
+                                Message::Binary(x) => debug!("Binary message received {:?}",x),
+                                Message::Ping(x) => debug!("Ping {:?}",x),
+                                Message::Pong(x) => debug!("Pong {:?}",x),
+                                Message::Close(x) => warn!("Close message received {:?}",x),
+                                Message::Frame(x) => debug!("Frame message received {:?}",x),
+                            }
+                            , Err(_) => { return Err(WebSocketError::AwayError) }
+                        },
+                        None => {warn!("No message!");}
                     }
-                }
-                Err(e) => {
-                    eprintln!("Error receiving message: {}", e);
                 }
             }
         }
-    }
-
-    // ----------------------------------------------------------------------------
-    // Function to send messages via the WebSocket.
-    // ----------------------------------------------------------------------------
-    pub async fn send_messages(
-        mut ws_stream: SplitSink<
-            WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
-            tokio_tungstenite::tungstenite::Message,
-        >,
-    ) {
-        // This could be a loop where you send messages as needed
-        // For the example, we're just sending one message and then exiting
-        // let message = Message::Text("Hello, WebSocket Server!".into());
-
-        // if let Err(e) = ws_stream.send(message).await {
-        //     eprintln!("Error sending message: {}", e);
-        // }
     }
 }
