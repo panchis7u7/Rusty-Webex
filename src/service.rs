@@ -241,3 +241,69 @@ pub(crate) async fn create_device(token: &str, device: Device) -> Option<DeviceD
 
     return Some(created_device);
 }
+
+pub(crate) mod websocket {
+    use crate::types::{Publish, Register, RegisterResponse, WebSocketServer};
+
+    use super::{review_status, Service};
+
+    // ----------------------------------------------------------------------------
+    // Retrieve a new websocket url from the server.
+    // ----------------------------------------------------------------------------
+    pub async fn register(endpoint: &str, websocket_server: WebSocketServer) -> RegisterResponse {
+        let client_service = Service::get_instance();
+        let response = client_service
+            .client
+            .post(format!(
+                "http://{}:{}/{}",
+                websocket_server.host, websocket_server.port, endpoint
+            ))
+            .headers(client_service.headers.clone())
+            .json(&Register {
+                user_id: websocket_server.user_id,
+                groups: websocket_server.subscription_groups.clone(),
+            })
+            .send()
+            .await
+            .unwrap();
+
+        review_status(&response);
+
+        let message = response
+            .json::<RegisterResponse>()
+            .await
+            .expect("failed to convert struct from json");
+
+        return message;
+    }
+
+    // ----------------------------------------------------------------------------
+    // WebSocket message publishing.
+    // ----------------------------------------------------------------------------
+
+    pub async fn publish(
+        endpoint: &str,
+        group: String,
+        message: serde_json::Value,
+        websocket_server: WebSocketServer,
+    ) {
+        let client_service = Service::get_instance();
+        let response = client_service
+            .client
+            .post(format!(
+                "http://{}:{}/{}",
+                websocket_server.host, websocket_server.port, endpoint
+            ))
+            .headers(client_service.headers.clone())
+            .json(&Publish {
+                user_id: websocket_server.user_id,
+                group,
+                message: message.to_string(),
+            })
+            .send()
+            .await
+            .unwrap();
+
+        review_status(&response);
+    }
+}

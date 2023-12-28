@@ -16,6 +16,14 @@ use std::pin::Pin;
 // ###########################################################################
 
 #[derive(Serialize, Deserialize)]
+pub struct WebSocketServer {
+    pub host: &'static str,
+    pub port: u16,
+    pub user_id: u16,
+    pub subscription_groups: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct Register {
     pub user_id: u16,
     pub groups: Vec<String>,
