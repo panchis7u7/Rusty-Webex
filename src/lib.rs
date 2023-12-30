@@ -9,8 +9,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use types::DeviceDetails;
 use types::{Device, DevicesDetails};
-use url::Url;
 use uuid::Uuid;
+use websocket::PureClient;
 use websocket::WebSocketClient;
 
 // Rusty-webex modules.
@@ -22,6 +22,7 @@ pub mod error;
 mod parser;
 pub mod service;
 pub mod types;
+mod utils;
 pub mod websocket;
 
 // ###################################################################################
@@ -176,18 +177,11 @@ impl<'a> WebexBotServer {
             self._device_info = Some(device.unwrap());
         }
 
-        // Retrieve the websocket URL from the device.
-        let url = Url::parse(&self._device_info.as_ref().unwrap().web_socket_url.clone()).unwrap();
-
         // Create the websocket connection.
-        let mut webex_websocket = WebSocketClient::new(
-            self._token.as_str(),
-            url.to_string(),
-            true,
-            on_message,
-            on_card_action,
-        )
-        .await;
+        let mut webex_websocket = WebSocketClient::new(true, on_message, Some(on_card_action));
+
+        // Connect to the remote resource.
+        let _ = webex_websocket.connect(self._device_info.as_ref().unwrap().web_socket_url.clone());
 
         // Generate authentication data.
         let auth_data = &serde_json::json!({
@@ -200,13 +194,13 @@ impl<'a> WebexBotServer {
         debug!("Auth data: {}", auth_data);
 
         // Send authentication data to the webex cloud device.
-        webex_websocket.send(auth_data.to_string()).await;
+        let _ = webex_websocket.send(auth_data.to_string()).await;
 
         // Start listening for messages.
-        let _ = webex_websocket.listen_for_messages().await;
+        let ws = webex_websocket.listen_for_messages(None).await;
 
         // close the websocket session gracefully.
-        webex_websocket.close().await;
+        let _ = ws.unwrap().close().await;
         Ok(())
     }
 
