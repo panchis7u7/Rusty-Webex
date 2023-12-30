@@ -1,6 +1,8 @@
 // Third party modules.
 use futures_util::{SinkExt, StreamExt};
 use log::{debug, info, warn};
+use reqwest::Client;
+use rocket::tokio;
 use rustls::RootCertStore;
 use std::sync::Arc;
 use tokio_tungstenite::tungstenite::Message;
@@ -9,6 +11,7 @@ use url::Url;
 
 // Rusty-webex modules.
 use crate::types::DeviceDetails;
+use crate::types::{RegisterResponse, RemoteTransportWebSocketServer};
 use crate::{error::WebSocketError, WebexClient};
 
 /**
@@ -77,12 +80,13 @@ pub(crate) async fn connect_secure(
 // ###################################################################################
 
 pub(crate) struct WebSocketClient {
-    pub access_token: String,
-    pub webex_client: WebexClient,
-    pub device_info: Option<DeviceDetails>,
-    pub(crate) websocket: WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
-    pub(crate) on_message: fn() -> (),
-    pub(crate) on_card_action: fn() -> (),
+    _access_token: String,
+    _webex_client: WebexClient,
+    _device_info: Option<DeviceDetails>,
+    pub(crate) _websocket:
+        WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+    _on_message: fn() -> (),
+    _on_card_action: fn() -> (),
 }
 impl WebSocketClient {
     // ------------------------------------------------------------------------------
@@ -125,12 +129,12 @@ impl WebSocketClient {
 
         // Create a new websocket client structure.
         WebSocketClient {
-            access_token: String::from(access_token),
-            webex_client: WebexClient::new(access_token),
-            device_info: None,
-            websocket: websocket_stream.unwrap(),
-            on_message: on_message,
-            on_card_action: on_card_action,
+            _access_token: String::from(access_token),
+            _webex_client: WebexClient::new(access_token),
+            _device_info: None,
+            _websocket: websocket_stream.unwrap(),
+            _on_message: on_message,
+            _on_card_action: on_card_action,
         }
     }
 
@@ -142,7 +146,7 @@ impl WebSocketClient {
      */
     // ------------------------------------------------------------------------------
     pub async fn send(&mut self, text: String) {
-        let _ = self.websocket.send(Message::Text(text)).await;
+        let _ = self._websocket.send(Message::Text(text)).await;
     }
 
     // ------------------------------------------------------------------------------
@@ -154,8 +158,8 @@ impl WebSocketClient {
     // ------------------------------------------------------------------------------
     pub async fn close(&mut self) {
         // Gracefuly close the websocket connection.
-        let _ = self.websocket.send(Message::Close(None));
-        let close = self.websocket.next().await;
+        let _ = self._websocket.send(Message::Close(None));
+        let close = self._websocket.next().await;
         info!(
             "[WebexWebSocketClient - close]: Server close message: {:?}",
             close
@@ -173,7 +177,7 @@ impl WebSocketClient {
         // Read for incoming webex messages.
         loop {
             tokio::select! {
-                ws_msg = self.websocket.next() => {
+                ws_msg = self._websocket.next() => {
                     match ws_msg {
                         Some(msg) => match msg {
                             Ok(msg) => match msg {
@@ -201,26 +205,12 @@ impl WebSocketClient {
     @return: base 64 message id
     */
     // ----------------------------------------------------------------------------
-    pub(crate) async fn get_base64_message_id(self) {}
+    pub(crate) async fn _get_base64_message_id(self) {}
 }
 
 // ###################################################################################
 // Transport WebSocket Client.
 // ###################################################################################
-
-use futures_util::stream::{SplitSink, SplitStream};
-use http::HeaderMap;
-use http::HeaderValue;
-use reqwest::header::ACCEPT;
-use reqwest::header::CONTENT_TYPE;
-use reqwest::Client;
-use rocket::tokio;
-use std::error::Error;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::Receiver;
-use tokio::sync::mpsc::Sender;
-
-use crate::types::{RegisterResponse, RemoteTransportWebSocketServer};
 
 pub struct TransportWebSocketClient {
     remote_ws_server: RemoteTransportWebSocketServer,
