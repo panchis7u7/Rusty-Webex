@@ -10,11 +10,11 @@ use tokio::sync::Mutex;
 use types::DeviceDetails;
 use types::{Device, DevicesDetails};
 use uuid::Uuid;
-use websocket::PureClient;
-use websocket::WebSocketClient;
 
 // Rusty-webex modules.
 use crate::types::{MessageEventResponse, Response};
+use crate::websocket::Client;
+use crate::websocket::WebSocketClient;
 use parser::Parser;
 use types::{Argument, Callback, Message as OwnMessage, MessageOut};
 pub mod adaptive_card;
@@ -200,7 +200,7 @@ impl<'a> WebexBotServer {
         let ws = webex_websocket.listen_for_messages(None).await;
 
         // close the websocket session gracefully.
-        let _ = ws.unwrap().close().await;
+        let _ = ws.unwrap().close();
         Ok(())
     }
 

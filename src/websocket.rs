@@ -1,9 +1,9 @@
-use async_trait::async_trait;
 // Third party modules.
+use async_trait::async_trait;
 use futures_util::{self, SinkExt, StreamExt};
 use log::{debug, info, warn};
 use once_cell::sync::OnceCell;
-use reqwest::Client;
+use reqwest::Client as ReqwestClient;
 use rocket::tokio;
 use rustls::RootCertStore;
 use std::sync::Arc;
@@ -33,9 +33,20 @@ fn access_app_state() -> MutexGuard<'static, AppState> {
 //     app_state.running = !app_state.running;
 // }
 
+// ###################################################################################
+// Shortened types.
+// ###################################################################################
+
+type ShortenedWebSocketStream =
+    WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+// ###################################################################################
+// Traits.
+// ###################################################################################
+
 #[async_trait]
-pub trait PureClient {
-    async fn connect(&mut self, registration_url: String) -> Result<(), Box<WebSocketError>>;
+pub trait Client: Sync + Send {
+    async fn connect(&mut self, registration_url: String) -> Result<(), WebSocketError>;
     async fn send(&mut self, text: String) -> Result<(), WebSocketError>;
     async fn listen_for_messages(
         mut self,
@@ -45,9 +56,14 @@ pub trait PureClient {
 }
 
 #[async_trait]
-pub trait TransportClient: PureClient {
-    async fn register(&self, endpoint: &str) -> RegisterResponse;
-    async fn publish(&self, endpoint: &str, group: String, message: serde_json::Value);
+pub trait TransportClient: Client + Sync + Send {
+    async fn register(self, endpoint: String) -> Result<RegisterResponse, WebSocketError>;
+    async fn publish(
+        &self,
+        endpoint: String,
+        group: String,
+        message: serde_json::Value,
+    ) -> Result<(), WebSocketError>;
 }
 
 /**
@@ -59,8 +75,7 @@ pub trait TransportClient: PureClient {
 
 pub(crate) async fn connect(
     web_socket_url: Url,
-) -> Result<WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, WebSocketError>
-{
+) -> Result<ShortenedWebSocketStream, WebSocketError> {
     // Connect to the websocket using the ws URL.
     let (ws_stream, _) = connect_async(web_socket_url)
         .await
@@ -81,8 +96,7 @@ pub(crate) async fn connect(
 
 pub(crate) async fn connect_secure(
     web_socket_url: Url,
-) -> Result<WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, WebSocketError>
-{
+) -> Result<ShortenedWebSocketStream, WebSocketError> {
     // Add certificates from the native certificate store
     let mut roots = RootCertStore::empty();
     for cert in rustls_native_certs::load_native_certs().expect("Could not load platform certs") {
@@ -118,8 +132,7 @@ pub(crate) async fn connect_secure(
 pub struct WebSocketClient {
     _device_info: Option<DeviceDetails>,
     _is_established: bool,
-    pub(crate) _websocket_stream:
-        Option<WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>>,
+    pub(crate) _websocket_stream: Option<ShortenedWebSocketStream>,
     _is_secure: bool,
     _on_message: fn() -> (),
     _on_card_action: Option<fn() -> ()>,
@@ -172,7 +185,7 @@ impl WebSocketClient {
 }
 
 #[async_trait]
-impl PureClient for WebSocketClient {
+impl Client for WebSocketClient {
     // ------------------------------------------------------------------------------
     /**
      * Function that connects to a websocket endpoint via TLS (secure) transort using
@@ -181,7 +194,7 @@ impl PureClient for WebSocketClient {
      * @returns Ok on success and a WebSocketError struct on an Error.
      */
     // ------------------------------------------------------------------------------
-    async fn connect(&mut self, registration_url: String) -> Result<(), Box<WebSocketError>> {
+    async fn connect(&mut self, registration_url: String) -> Result<(), WebSocketError> {
         // Parse the ws url string to a proper URL structure.
         let parsed_url = Url::parse(&registration_url).unwrap();
 
@@ -296,9 +309,9 @@ impl PureClient for WebSocketClient {
 
 pub struct TransportWebSocketClient {
     remote_ws_server: RemoteTransportWebSocketServer,
-    _client: Client,
+    _client: ReqwestClient,
     _websocket_impl: WebSocketClient,
-    _websocket: Option<WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>>,
+    _websocket: Option<ShortenedWebSocketStream>,
 }
 
 impl TransportWebSocketClient {
@@ -320,47 +333,66 @@ impl TransportWebSocketClient {
 
         TransportWebSocketClient {
             remote_ws_server,
-            _client: Client::new(),
+            _client: ReqwestClient::new(),
             _websocket_impl: WebSocketClient::new(is_secure, on_message, on_card_action),
             _websocket: None,
         }
     }
 
+    // ----------------------------------------------------------------------------
+    // Initialize WebSocket Client.
+    // ----------------------------------------------------------------------------
+    pub async fn connect(&mut self, registration_url: String) -> Result<(), WebSocketError> {
+        // Create a new websocket connection based on security requirements.
+        // TODO: Check for errors at the unwrap stage of the websocket stream creation.
+        let _ = self._websocket_impl.connect(registration_url).await;
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl TransportClient for TransportWebSocketClient {
     // ------------------------------------------------------------------------------
     // Register to the Transport Websocket Server.
     // ------------------------------------------------------------------------------
-
-    pub async fn register(&self, endpoint: &str) -> RegisterResponse {
-        crate::service::websocket::register(endpoint, &self.remote_ws_server).await
+    async fn register(self, endpoint: String) -> Result<RegisterResponse, WebSocketError> {
+        let cloned_server_config = self.remote_ws_server.clone();
+        Ok(crate::service::websocket::register(endpoint, cloned_server_config).await)
     }
 
     // ------------------------------------------------------------------------------
     // Publish a message to all endpoints that share the same group.
     // ------------------------------------------------------------------------------
-
-    pub async fn publish(&self, endpoint: &str, group: String, message: serde_json::Value) {
+    async fn publish(
+        &self,
+        endpoint: String,
+        group: String,
+        message: serde_json::Value,
+    ) -> Result<(), WebSocketError> {
         crate::service::websocket::publish(endpoint, group, message, &self.remote_ws_server).await;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Client for TransportWebSocketClient {
+    async fn connect(&mut self, registration_url: String) -> Result<(), WebSocketError> {
+        self._websocket_impl.connect(registration_url).await
     }
 
-    // ----------------------------------------------------------------------------
-    // Initialize WebSocket Client.
-    // ----------------------------------------------------------------------------
-    pub async fn connect(
-        &mut self,
-        registration_url: String,
-        is_secure: bool,
-    ) -> Result<(), Box<WebSocketError>> {
-        // Parse the ws url string to a proper URL structure.
-        let parsed_url = Url::parse(&registration_url).unwrap();
+    async fn send(&mut self, text: String) -> Result<(), WebSocketError> {
+        self._websocket_impl.send(text).await
+    }
 
-        // Create a new websocket connection based on security requirements.
-        // TODO: Check for errors at the unwrap stage of the websocket stream creation.
-        if is_secure {
-            self._websocket = Some(connect_secure(parsed_url).await.unwrap());
-        } else {
-            self._websocket = Some(connect(parsed_url).await.unwrap());
-        }
+    async fn listen_for_messages(
+        mut self,
+        callback: Option<fn(message: serde_json::Value) -> ()>,
+    ) -> Result<WebSocketClient, WebSocketError> {
+        self._websocket_impl.listen_for_messages(callback).await
+    }
 
-        Ok(())
+    async fn close(&mut self) -> Result<(), WebSocketError> {
+        self._websocket_impl.close().await
     }
 }

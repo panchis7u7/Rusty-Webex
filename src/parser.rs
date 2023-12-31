@@ -1,10 +1,8 @@
-// std.
+// Third party modules.
+use log::{debug, error};
 use std::io::{Error, ErrorKind};
 
-// Logging.
-use log::{debug, error};
-
-// Own.
+// Rusty-webex modules.
 use crate::types::{ArgTuple, Argument, Callback};
 
 // ###################################################################

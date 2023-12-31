@@ -1,7 +1,5 @@
-// http.
+// Third party modules.
 use http::HeaderValue;
-
-// reqwest.
 use reqwest::header::ACCEPT;
 use reqwest::header::CONTENT_TYPE;
 
@@ -251,8 +249,8 @@ pub(crate) mod websocket {
     // Retrieve a new websocket url from the server.
     // ----------------------------------------------------------------------------
     pub async fn register(
-        endpoint: &str,
-        websocket_server: &RemoteTransportWebSocketServer,
+        endpoint: String,
+        websocket_server: RemoteTransportWebSocketServer,
     ) -> RegisterResponse {
         let client_service = Service::get_instance();
         let response = client_service
@@ -285,7 +283,7 @@ pub(crate) mod websocket {
     // ----------------------------------------------------------------------------
 
     pub async fn publish(
-        endpoint: &str,
+        endpoint: String,
         group: String,
         message: serde_json::Value,
         websocket_server: &RemoteTransportWebSocketServer,

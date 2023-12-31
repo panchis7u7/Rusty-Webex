@@ -1,21 +1,19 @@
-// own.
-use crate::adaptive_card::AdaptiveCard;
-use crate::WebexClient;
-
-// serde.
+// Third party modules.
 use serde::{Deserialize, Serialize};
-
-// std.
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::future::Future;
 use std::pin::Pin;
 
+// Rusty-webex modules.
+use crate::adaptive_card::AdaptiveCard;
+use crate::WebexClient;
+
 // ###########################################################################
 // Websocket user Register request, response and publish types.
 // ###########################################################################
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct RemoteTransportWebSocketServer {
     pub host: &'static str,
     pub port: u16,
